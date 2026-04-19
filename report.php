@@ -31,6 +31,14 @@ require_capability('local/agentdetect:viewsignals', context_system::instance());
 $userid = optional_param('userid', 0, PARAM_INT);
 $sessionid = optional_param('sessionid', '', PARAM_ALPHANUMEXT);
 $download = optional_param('download', '', PARAM_ALPHA);
+$tab = optional_param('tab', 'signals', PARAM_ALPHA);
+if (!in_array($tab, ['signals', 'flags'], true)) {
+    $tab = 'signals';
+}
+// A user filter only makes sense on the signals tab.
+if ($userid) {
+    $tab = 'signals';
+}
 
 // Handle JSON download.
 if ($download === 'json') {
@@ -96,12 +104,33 @@ if ($download === 'json') {
     exit;
 }
 
-$PAGE->set_url(new moodle_url('/local/agentdetect/report.php', ['userid' => $userid, 'sessionid' => $sessionid]));
+$PAGE->set_url(new moodle_url('/local/agentdetect/report.php', [
+    'tab' => $tab,
+    'userid' => $userid,
+    'sessionid' => $sessionid,
+]));
 $PAGE->set_context(context_system::instance());
 $PAGE->set_title(get_string('report:title', 'local_agentdetect'));
 $PAGE->set_heading(get_string('report:title', 'local_agentdetect'));
 
 echo $OUTPUT->header();
+
+// Tab bar.
+$tabs = [
+    new tabobject(
+        'signals',
+        new moodle_url('/local/agentdetect/report.php', ['tab' => 'signals']),
+        get_string('report:storedsignals', 'local_agentdetect')
+    ),
+    new tabobject(
+        'flags',
+        new moodle_url('/local/agentdetect/report.php', ['tab' => 'flags']),
+        get_string('report:userflags', 'local_agentdetect')
+    ),
+];
+echo $OUTPUT->tabtree($tabs, $tab);
+
+if ($tab === 'signals') {
 
 // Get all users with signals for the dropdown.
 $userswithsignals = $DB->get_records_sql(
@@ -120,6 +149,7 @@ echo html_writer::start_div('card-body');
 echo html_writer::tag('h5', get_string('report:filtersignals', 'local_agentdetect'), ['class' => 'card-title']);
 
 echo html_writer::start_tag('form', ['method' => 'get', 'action' => $PAGE->url->out_omit_querystring(), 'class' => 'form-inline']);
+echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'signals']);
 
 // User dropdown.
 echo html_writer::start_div('form-group mr-3 mb-2');
@@ -287,7 +317,7 @@ if (empty($signals)) {
 
         // User link.
         $userlink = html_writer::link(
-            new moodle_url('/local/agentdetect/report.php', ['userid' => $signal->userid]),
+            new moodle_url('/local/agentdetect/report.php', ['tab' => 'signals', 'userid' => $signal->userid]),
             fullname($signal),
             ['title' => $signal->email]
         );
@@ -450,10 +480,8 @@ if (empty($signals)) {
     echo html_writer::table($table);
 }
 
-// Flags section (only show on main view).
-if (!$userid) {
-    echo html_writer::tag('h3', get_string('report:userflags', 'local_agentdetect'), ['style' => 'margin-top: 30px;']);
-
+} else {
+    // Flags tab.
     $flags = $DB->get_records_sql(
         "SELECT f.*, u.firstname, u.lastname, u.email
            FROM {local_agentdetect_flags} f
@@ -480,7 +508,7 @@ if (!$userid) {
 
         foreach ($flags as $flag) {
             $userlink = html_writer::link(
-                new moodle_url('/local/agentdetect/report.php', ['userid' => $flag->userid]),
+                new moodle_url('/local/agentdetect/report.php', ['tab' => 'signals', 'userid' => $flag->userid]),
                 fullname($flag) . ' (' . $flag->email . ')'
             );
             $time = userdate($flag->timemodified, '%Y-%m-%d %H:%M:%S');
@@ -495,7 +523,7 @@ if (!$userid) {
             }
 
             $actions = html_writer::link(
-                new moodle_url('/local/agentdetect/report.php', ['userid' => $flag->userid]),
+                new moodle_url('/local/agentdetect/report.php', ['tab' => 'signals', 'userid' => $flag->userid]),
                 get_string('report:viewsignals', 'local_agentdetect'),
                 ['class' => 'btn btn-sm btn-outline-primary']
             );
