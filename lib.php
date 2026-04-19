@@ -49,21 +49,33 @@ function local_agentdetect_format_context_link(?int $contextid): string {
         return html_writer::tag('span', '-', ['class' => 'text-muted', 'title' => 'Context ' . $contextid . ' no longer exists']);
     }
 
+    $truncate = static function (string $text, int $max): string {
+        return core_text::strlen($text) > $max
+            ? core_text::substr($text, 0, $max - 3) . '...'
+            : $text;
+    };
+
     if ($context instanceof context_module) {
         $cm = get_coursemodule_from_id(null, $context->instanceid, 0, false, IGNORE_MISSING);
         if (!$cm) {
             return html_writer::tag('span', '-', ['class' => 'text-muted']);
         }
-        $label = format_string($cm->name);
+        $course = get_course($cm->course);
+        $shortname = format_string($course->shortname);
+        $modname = format_string($cm->name);
+        $shortshort = $truncate($shortname, 10);
+        $shortmod = $truncate($modname, 25);
         $url = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
-        $icon = html_writer::tag('span', ucfirst($cm->modname), ['class' => 'badge badge-light mr-1']);
-        return $icon . html_writer::link($url, $label, ['title' => $cm->modname . ': ' . $label]);
+        $title = $shortname . ' / ' . $modname;
+        return html_writer::link($url, s($shortshort . ' / ' . $shortmod), ['title' => s($title)]);
     }
 
     if ($context instanceof context_course) {
         $course = get_course($context->instanceid);
+        $shortname = format_string($course->shortname);
+        $label = $truncate($shortname, 10);
         $url = new moodle_url('/course/view.php', ['id' => $course->id]);
-        return html_writer::link($url, format_string($course->shortname), ['title' => format_string($course->fullname)]);
+        return html_writer::link($url, s($label), ['title' => format_string($course->fullname)]);
     }
 
     if ($context instanceof context_system) {
