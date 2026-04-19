@@ -1,0 +1,44 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * External services definition for local_agentdetect.
+ *
+ * @package    local_agentdetect
+ * @copyright  2026 Cursive Technology <joe@cursivetechnology.com>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
+defined('MOODLE_INTERNAL') || die();
+
+$functions = [
+    'local_agentdetect_report_signals' => [
+        'classname' => 'local_agentdetect\external\report_signals',
+        'methodname' => 'execute',
+        'description' => 'Report agent detection signals from the browser',
+        'type' => 'write',
+        'ajax' => true,
+        'loginrequired' => true,
+    ],
+    'local_agentdetect_get_user_flags' => [
+        'classname' => 'local_agentdetect\external\get_user_flags',
+        'methodname' => 'execute',
+        'description' => 'Get detection flags for specified users in a context',
+        'type' => 'read',
+        'ajax' => true,
+        'loginrequired' => true,
+    ],
+];
