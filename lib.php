@@ -42,45 +42,82 @@ function local_agentdetect_format_context_link(?int $contextid): string {
         return html_writer::tag('span', '-', ['class' => 'text-muted']);
     }
 
-    $context = context::instance_by_id($contextid, IGNORE_MISSING);
-    if (!$context) {
-        return html_writer::tag('span', '-', ['class' => 'text-muted', 'title' => 'Context ' . $contextid . ' no longer exists']);
+    // Cache resolved HTML per contextid for the lifetime of the request. The
+    // admin report table calls this once per signal row, and a single user
+    // typically has many signals sharing the same quiz context — without this
+    // cache each row re-runs context::instance_by_id + get_coursemodule_from_id
+    // + get_course, which is a classic N+1 pattern on multi-hundred-row tables.
+    static $cache = [];
+    if (array_key_exists($contextid, $cache)) {
+        return $cache[$contextid];
     }
 
-    $truncate = static function (string $text, int $max): string {
-        return core_text::strlen($text) > $max
-            ? core_text::substr($text, 0, $max - 3) . '...'
-            : $text;
-    };
-
-    if ($context instanceof context_module) {
-        $cm = get_coursemodule_from_id(null, $context->instanceid, 0, false, IGNORE_MISSING);
-        if (!$cm) {
+    $build = static function () use ($contextid): string {
+        $context = context::instance_by_id($contextid, IGNORE_MISSING);
+        if (!$context) {
             return html_writer::tag('span', '-', ['class' => 'text-muted']);
         }
-        $course = get_course($cm->course);
-        $shortname = format_string($course->shortname);
-        $modname = format_string($cm->name);
-        $shortshort = $truncate($shortname, 10);
-        $shortmod = $truncate($modname, 25);
-        $url = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
-        $title = $shortname . ' / ' . $modname;
-        return html_writer::link($url, s($shortshort . ' / ' . $shortmod), ['title' => s($title)]);
-    }
 
-    if ($context instanceof context_course) {
-        $course = get_course($context->instanceid);
-        $shortname = format_string($course->shortname);
-        $label = $truncate($shortname, 10);
-        $url = new moodle_url('/course/view.php', ['id' => $course->id]);
-        return html_writer::link($url, s($label), ['title' => format_string($course->fullname)]);
-    }
+        $truncate = static function (string $text, int $max): string {
+            return core_text::strlen($text) > $max
+                ? core_text::substr($text, 0, $max - 3) . '...'
+                : $text;
+        };
 
-    if ($context instanceof context_system) {
-        return html_writer::tag('span', get_string('site'), ['class' => 'text-muted']);
-    }
+        if ($context instanceof context_module) {
+            $cm = get_coursemodule_from_id(null, $context->instanceid, 0, false, IGNORE_MISSING);
+            if (!$cm) {
+                return html_writer::tag('span', '-', ['class' => 'text-muted']);
+            }
+            $course = get_course($cm->course);
+            $shortname = format_string($course->shortname);
+            $modname = format_string($cm->name);
+            $shortshort = $truncate($shortname, 10);
+            $shortmod = $truncate($modname, 25);
+            $url = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
+            $title = $shortname . ' / ' . $modname;
+            return html_writer::link($url, s($shortshort . ' / ' . $shortmod), ['title' => s($title)]);
+        }
 
-    return html_writer::tag('span', $context->get_context_name(false), ['class' => 'text-muted']);
+        if ($context instanceof context_course) {
+            $course = get_course($context->instanceid);
+            $shortname = format_string($course->shortname);
+            $label = $truncate($shortname, 10);
+            $url = new moodle_url('/course/view.php', ['id' => $course->id]);
+            return html_writer::link($url, s($label), ['title' => format_string($course->fullname)]);
+        }
+
+        if ($context instanceof context_system) {
+            return html_writer::tag('span', get_string('site'), ['class' => 'text-muted']);
+        }
+
+        return html_writer::tag('span', $context->get_context_name(false), ['class' => 'text-muted']);
+    };
+
+    return $cache[$contextid] = $build();
+}
+
+/**
+ * Format a flag type as a Bootstrap badge with translated label.
+ *
+ * Shared between the admin report and the course-level report so both views
+ * render flag types consistently, translated via the 'flagtype:*' lang keys.
+ *
+ * @param string $flagtype The flag type enum (agent_suspected, low_suspicion, ...).
+ * @return string HTML badge.
+ */
+function local_agentdetect_format_flag_badge(string $flagtype): string {
+    $stringkey = 'flagtype:' . $flagtype;
+    $manager = get_string_manager();
+    $label = $manager->string_exists($stringkey, 'local_agentdetect')
+        ? get_string($stringkey, 'local_agentdetect')
+        : $flagtype;
+    if ($flagtype === 'agent_suspected' || $flagtype === 'agent_confirmed') {
+        return html_writer::tag('span', $label, ['class' => 'badge badge-danger']);
+    } else if ($flagtype === 'low_suspicion') {
+        return html_writer::tag('span', $label, ['class' => 'badge badge-warning']);
+    }
+    return html_writer::tag('span', $label, ['class' => 'badge badge-secondary']);
 }
 
 /**

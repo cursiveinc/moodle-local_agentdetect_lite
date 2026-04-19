@@ -26,6 +26,7 @@
  */
 
 require_once(__DIR__ . '/../../config.php');
+require_once(__DIR__ . '/lib.php');
 
 $courseid = required_param('courseid', PARAM_INT);
 $userid = optional_param('userid', 0, PARAM_INT);
@@ -447,21 +448,6 @@ function local_agentdetect_get_course_context_ids(context_course $context): arra
 }
 
 /**
- * Format a flag type as a Bootstrap badge.
- *
- * @param string $flagtype The flag type.
- * @return string HTML badge.
- */
-function local_agentdetect_format_flag_badge(string $flagtype): string {
-    if ($flagtype === 'agent_suspected' || $flagtype === 'agent_confirmed') {
-        return html_writer::tag('span', $flagtype, ['class' => 'badge badge-danger']);
-    } else if ($flagtype === 'low_suspicion') {
-        return html_writer::tag('span', $flagtype, ['class' => 'badge badge-warning']);
-    }
-    return html_writer::tag('span', $flagtype, ['class' => 'badge badge-secondary']);
-}
-
-/**
  * Format a score as a coloured Bootstrap badge.
  *
  * @param int|string $score The score value.
@@ -643,101 +629,43 @@ function local_agentdetect_build_signal_explanations(object $data): array {
  * @return string|null Human-readable explanation, or null if not mapped.
  */
 function local_agentdetect_explain_signal(string $name, $value, int $weight): ?string {
-    // Signal-to-explanation mapping.
-    // Each entry describes what was detected in terms a teacher can understand.
-    $map = [
-        // Tier 1 — physically impossible for a human.
-        'click.center_precision' =>
-            'Clicks landed at the exact mathematical centre of page elements, '
-            . 'a pattern consistent with programmatic clicking rather than a human hand.',
-        'click.teleport_pattern' =>
-            'The mouse cursor jumped instantly between distant screen positions without '
-            . 'any intermediate movement — consistent with automated cursor positioning.',
-        'comet.ultra_precise_center' =>
-            'Multiple clicks hit the precise pixel centre of their target elements, '
-            . 'which is extremely unlikely for a human using a mouse or trackpad.',
-        'comet.low_mouse_to_action_ratio' =>
-            'Very few mouse movements were recorded relative to the number of clicks. '
-            . 'Human users naturally move the mouse before and between clicks.',
-        'comet.zero_keystrokes' =>
-            'No keyboard input was recorded during the session despite multiple clicks '
-            . 'and page navigations — the session appeared to be driven entirely by clicking.',
-        'comet.low_per_page_mouse_ratio' =>
-            'Across most quiz pages, the number of mouse movements was extremely low '
-            . 'compared to clicks — a strong indicator of programmatic interaction.',
-
-        // Tier 2 — behavioural / temporal.
-        'comet.action_burst' =>
-            'Rapid bursts of actions (clicking answers in quick succession) were detected '
-            . 'at a rate well above typical human quiz-taking speed.',
-        'comet.read_then_act' =>
-            'A repeated pattern of pausing (as if reading the question) followed by '
-            . 'an immediate precise answer was detected across multiple questions.',
-        'comet.no_mousemove_trail' =>
-            'Clicks occurred without any mouse movement trail beforehand — human users '
-            . 'almost always generate visible cursor movement before clicking.',
-        'comet.missing_pointer_events' =>
-            'Expected pointer interaction events (mouse down/up sequences) were missing '
-            . 'or incomplete during click actions.',
-        'comet.scroll_then_click' =>
-            'A high proportion of clicks were immediately preceded by a scroll event, '
-            . 'suggesting automated "scroll to element, then click" behaviour.',
-        'comet.rapid_focus_sequence' =>
-            'Page focus changed rapidly multiple times, consistent with an automated tool '
-            . 'switching between browser tabs or windows.',
-
-        // Click / interaction signals.
-        'click.no_movement' =>
-            'No mouse movement at all was detected during the session — all interaction '
-            . 'consisted of clicks without any visible cursor activity.',
-        'click.no_hover' =>
-            'Click targets were never hovered over before being clicked, which is unusual '
-            . 'for human mouse interaction.',
-        'click.superhuman_speed' =>
-            'Some clicks occurred faster than typical human reaction time allows.',
-        'click.perfect_timing' =>
-            'The timing between consecutive clicks was unusually uniform, suggesting '
-            . 'automated pacing rather than natural human rhythm.',
-
-        // Sequence signals.
-        'sequence.low_hover_ratio' =>
-            'The proportion of elements hovered before clicking was unusually low compared '
-            . 'to typical human browsing patterns.',
-        'sequence.direct_focus' =>
-            'Form elements received focus directly without the preceding mouse movement '
-            . 'that would normally occur with human navigation.',
-
-        // Keystroke signals.
-        'comet.uniform_keystroke_cadence' =>
-            'Keystrokes were typed at a suspiciously uniform speed, lacking the natural '
-            . 'variation in timing that human typing exhibits.',
-        'comet.uniform_hold_duration' =>
-            'Keys were held down for nearly identical durations across all keystrokes, '
-            . 'which is atypical of natural human typing.',
-
-        // Fingerprint / extension signals.
-        'comet.extension.cached' =>
-            'A known AI agent browser extension was detected as installed.',
-        'comet.extension.script_injected' =>
-            'Scripts associated with a known AI agent extension were found injected into the page.',
-        'comet.extension.link_injected' =>
-            'Resource links associated with a known AI agent extension were found in the page.',
-        'comet.extension.stylesheet' =>
-            'Stylesheets associated with a known AI agent extension were detected.',
-        'comet.extension.resource_probe' =>
-            'Probing for known AI agent extension resources returned a positive result.',
-        'comet.runtime.inline_style' =>
-            'Inline styles characteristic of an AI agent overlay were detected on the page.',
-        'comet.runtime.script' =>
-            'Runtime scripts characteristic of an AI agent were detected on the page.',
-        'comet.runtime.global' =>
-            'Global JavaScript variables associated with a known AI agent were found.',
+    // Only map known signal names. The translated explanation is pulled from
+    // lang/en/local_agentdetect.php via the 'explain:<signal_name>' key, so
+    // translators can ship localisations without touching PHP.
+    static $known = [
+        'click.center_precision',
+        'click.no_hover',
+        'click.no_movement',
+        'click.perfect_timing',
+        'click.superhuman_speed',
+        'click.teleport_pattern',
+        'comet.action_burst',
+        'comet.extension.cached',
+        'comet.extension.link_injected',
+        'comet.extension.resource_probe',
+        'comet.extension.script_injected',
+        'comet.extension.stylesheet',
+        'comet.low_mouse_to_action_ratio',
+        'comet.low_per_page_mouse_ratio',
+        'comet.missing_pointer_events',
+        'comet.no_mousemove_trail',
+        'comet.rapid_focus_sequence',
+        'comet.read_then_act',
+        'comet.runtime.global',
+        'comet.runtime.inline_style',
+        'comet.runtime.script',
+        'comet.scroll_then_click',
+        'comet.ultra_precise_center',
+        'comet.uniform_hold_duration',
+        'comet.uniform_keystroke_cadence',
+        'comet.zero_keystrokes',
+        'sequence.direct_focus',
+        'sequence.low_hover_ratio',
     ];
 
-    if (isset($map[$name])) {
-        return $map[$name];
+    if (!in_array($name, $known, true)) {
+        return null;
     }
 
-    // Fallback for unmapped signals — show the technical name.
-    return null;
+    return get_string('explain:' . $name, 'local_agentdetect');
 }

@@ -565,14 +565,7 @@ if ($tab === 'signals') {
             );
             $time = userdate($flag->timemodified, '%Y-%m-%d %H:%M:%S');
 
-            $flagtype = $flag->flagtype;
-            if ($flagtype === 'agent_suspected' || $flagtype === 'agent_confirmed') {
-                $flagtype = html_writer::tag('span', $flagtype, ['class' => 'badge badge-danger']);
-            } else if ($flagtype === 'low_suspicion') {
-                $flagtype = html_writer::tag('span', $flagtype, ['class' => 'badge badge-warning']);
-            } else {
-                $flagtype = html_writer::tag('span', $flagtype, ['class' => 'badge badge-secondary']);
-            }
+            $flagtype = local_agentdetect_format_flag_badge($flag->flagtype);
 
             $actions = html_writer::link(
                 new moodle_url('/local/agentdetect/report.php', ['tab' => 'signals', 'userid' => $flag->userid]),

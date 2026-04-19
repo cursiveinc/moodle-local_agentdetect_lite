@@ -29,7 +29,8 @@
       "Bash(tar --exclude=node_modules --exclude=.git --exclude=package-lock.json -cf /tmp/agentdetect-lite.tar .)",
       "Bash(docker cp *)",
       "Bash(curl -s -o /tmp/admin-out.html -w 'status:%{http_code} size:%{size_download}\\\\n' 'http://localhost:8000/admin/index.php?cache=1')",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(node fix-indent.js)"
     ]
   }
 }
