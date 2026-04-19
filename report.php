@@ -189,7 +189,11 @@ if ($tab === 'signals') {
     echo html_writer::start_div('card-body');
     echo html_writer::tag('h5', get_string('report:filtersignals', 'local_agentdetect'), ['class' => 'card-title']);
 
-    echo html_writer::start_tag('form', ['method' => 'get', 'action' => $PAGE->url->out_omit_querystring(), 'class' => 'form-inline']);
+    echo html_writer::start_tag('form', [
+        'method' => 'get',
+        'action' => $PAGE->url->out_omit_querystring(),
+        'class' => 'form-inline',
+    ]);
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'signals']);
 
     // User dropdown.
