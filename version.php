@@ -28,4 +28,4 @@ $plugin->component = 'local_agentdetect';
 $plugin->version = 2026041900;
 $plugin->requires = 2024100700; // Moodle 4.5+ (for core\hook\output\before_footer_html_generation).
 $plugin->maturity = MATURITY_BETA;
-$plugin->release = '0.4.0-lite';
+$plugin->release = '0.4.0';
