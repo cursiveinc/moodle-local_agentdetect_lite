@@ -75,12 +75,10 @@ if ($download === 'json') {
             'page_title' => $data->pageTitle ?? null,
             'fp_score' => $signal->fingerprintscore,
             'int_score' => $signal->interactionscore,
-            'inj_score' => $data->injection->score ?? null,
             'combined_score' => $signal->combinedscore,
             'verdict' => $signal->verdict,
             'event_counts' => $data->interaction->eventCounts ?? null,
             'anomalies' => $data->interaction->anomalies ?? [],
-            'injection_signals' => $data->injection->signals ?? [],
             'comet_detected' => $data->comet->detected ?? false,
             'comet_score' => $data->comet->score ?? null,
             'comet_signals' => $data->comet->signals ?? [],
@@ -278,7 +276,6 @@ if (empty($signals)) {
         get_string('type', 'local_agentdetect'),
         get_string('report:fp', 'local_agentdetect'),
         get_string('report:int', 'local_agentdetect'),
-        get_string('report:inj', 'local_agentdetect'),
         get_string('report:combined', 'local_agentdetect'),
         get_string('coursereport:verdict', 'local_agentdetect'),
         get_string('report:details', 'local_agentdetect'),
@@ -324,12 +321,6 @@ if (empty($signals)) {
         $fpscore = $signal->fingerprintscore ?? '-';
         $intscore = $signal->interactionscore ?? '-';
         $combined = $signal->combinedscore ?? '-';
-
-        // Get injection score from signal data (data already decoded above).
-        $injscore = '-';
-        if ($data && isset($data->injection->score)) {
-            $injscore = $data->injection->score;
-        }
 
         if (is_numeric($combined)) {
             if ($combined >= 70) {
@@ -402,22 +393,6 @@ if (empty($signals)) {
                 }
             }
 
-            // Injection signals.
-            if (isset($data->injection->signals) && !empty($data->injection->signals)) {
-                foreach ($data->injection->signals as $s) {
-                    $injparams = (object) [
-                        'name' => s($s->name),
-                        'count' => (int) $s->count,
-                        'weight' => (int) $s->maxWeight,
-                    ];
-                    $details[] = html_writer::tag(
-                        'span',
-                        get_string('report:injsignal', 'local_agentdetect', $injparams),
-                        ['class' => 'text-info']
-                    );
-                }
-            }
-
             // Agent detection signals.
             if (isset($data->comet) && !empty($data->comet->detected)) {
                 $cometscore = (int) ($data->comet->score ?? 0);
@@ -466,7 +441,6 @@ if (empty($signals)) {
             $signal->signaltype,
             $fpscore,
             $intscore,
-            $injscore,
             $combined,
             $verdict,
             $detailshtml,

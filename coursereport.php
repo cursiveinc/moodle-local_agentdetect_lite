@@ -558,17 +558,6 @@ function local_agentdetect_build_signal_explanations(object $data): array {
         }
     }
 
-    // Injection signals.
-    if (isset($data->injection->signals) && is_array($data->injection->signals)) {
-        foreach ($data->injection->signals as $is) {
-            $signals[] = (object) [
-                'name' => $is->name,
-                'value' => $is->value ?? null,
-                'weight' => $is->maxWeight ?? $is->weight ?? 0,
-            ];
-        }
-    }
-
     // Sort by weight descending and take the most significant ones.
     usort($signals, function ($a, $b) {
         return $b->weight - $a->weight;

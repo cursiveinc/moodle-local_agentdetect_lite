@@ -6,3 +6,6 @@ Thumbs.db
 .idea/
 .vscode/
 moodle-plugin-ci/
+
+# Internal technical docs — kept locally, not shipped.
+DETECT.md
