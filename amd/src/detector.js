@@ -272,12 +272,14 @@ const buildCombinedPayload = (fp, inter, cometSummary, combinedScore, verdict) =
     },
     combinedScore,
     verdict,
-    // detectedAgent is only promoted to 'comet_agentic' once the comet score
-    // clears the same >= 40 threshold the combined-score formula uses for its
-    // bonus, so teachers do not see an AGENT badge next to a LOW_SUSPICION
-    // verdict when a single weight-3 signal (e.g. comet.zero_keystrokes)
-    // fires on its own.
-    detectedAgent: (cometSummary.detected && cometSummary.score >= 40) ? 'comet_agentic' : null,
+    // detectedAgent is only promoted to 'ai_browser_agent' once the CDP-agent
+    // score clears the same >= 40 threshold the combined-score formula uses
+    // for its bonus, so teachers do not see an AGENT badge next to a
+    // LOW_SUSPICION verdict when a single weight-3 signal fires on its own.
+    // The label is deliberately generic — the 'comet.*' signal prefix is a
+    // naming artifact, these signals catch any CDP-driven browser agent
+    // (Perplexity Comet, Claude Chrome, Playwright, Puppeteer, etc.).
+    detectedAgent: (cometSummary.detected && cometSummary.score >= 40) ? 'ai_browser_agent' : null,
 });
 
 /**

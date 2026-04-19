@@ -439,14 +439,17 @@ if (empty($signals)) {
             );
         }
 
-        // Agent detection badge — only show when the comet score clears the
-        // 'actually suspicious' threshold. This re-applies the gate at render
-        // time so rows written before the client-side gate existed still
-        // render correctly (the stored detectedAgent field on those rows is
-        // frozen as 'comet_agentic' regardless of score).
+        // Agent detection badge — only show when the CDP-agent score clears
+        // the 'actually suspicious' threshold. This re-applies the gate at
+        // render time so rows written before the client-side gate existed
+        // still render correctly (the stored detectedAgent field on those
+        // rows is frozen regardless of score). Accepts both the new generic
+        // 'ai_browser_agent' label and the legacy 'comet_agentic' one so
+        // historical rows keep rendering the badge when the score warrants.
         $cometscorefromdata = (int) ($data->comet->score ?? 0);
-        if (isset($data->detectedAgent) && $data->detectedAgent === 'comet_agentic'
-            && $cometscorefromdata >= 40) {
+        $agenttag = $data->detectedAgent ?? null;
+        $isagenttag = in_array($agenttag, ['ai_browser_agent', 'comet_agentic'], true);
+        if ($isagenttag && $cometscorefromdata >= 40) {
             $verdict .= ' ' . html_writer::tag(
                 'span',
                 get_string('report:cometagent', 'local_agentdetect'),
