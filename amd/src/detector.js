@@ -44,6 +44,10 @@ const SESSION_MAX_AGE = 30 * 60 * 1000;
 const MAX_REPORTED_ANOMALIES = 8;
 let initialized = false;
 
+// Cached so handlePageUnload can build a full scored payload synchronously
+// inside beforeunload (Fingerprint.collect is async and cannot be awaited there).
+let lastFingerprint = null;
+
 /**
  * Initialize the agent detection system.
  *
@@ -70,6 +74,7 @@ export const init = async(options = {}) => {
     Interaction.startMonitoring({contextId: config.contextId});
 
     const initialFingerprint = await Fingerprint.collect();
+    lastFingerprint = initialFingerprint;
 
     if (initialFingerprint.score >= config.minReportScore) {
         await reportSignals('fingerprint', buildFingerprintPayload(initialFingerprint));
@@ -136,6 +141,7 @@ const stopPeriodicReporting = () => {
  */
 export const collectAndReport = async() => {
     const fingerprint = await Fingerprint.collect();
+    lastFingerprint = fingerprint;
     const interaction = Interaction.analyze();
 
     const comet = extractCometSignals(fingerprint, interaction);
@@ -398,27 +404,35 @@ const reportSignals = async(type, data) => {
 const handlePageUnload = () => {
     Interaction.saveToSessionStorage();
 
-    if (navigator.sendBeacon && config.sessionKey) {
-        const interaction = Interaction.analyze();
-        const beaconData = {
-            interaction: {
-                score: interaction.score,
-                eventCounts: interaction.eventCounts,
-                duration: interaction.duration,
-                anomalies: topSignals(interaction.anomalies),
-            },
-        };
-        const payload = {
-            sesskey: config.sessionKey,
-            contextid: config.contextId,
-            sessionid: sessionId,
-            signaltype: 'unload',
-            signaldata: JSON.stringify(beaconData),
-        };
-
-        const url = M.cfg.wwwroot + '/local/agentdetect/beacon.php';
-        navigator.sendBeacon(url, JSON.stringify(payload));
+    if (!navigator.sendBeacon || !config.sessionKey) {
+        return;
     }
+
+    // Build a fully-scored payload synchronously — fingerprint is reused from
+    // the last async collect(), interaction is computed inline. This is
+    // critical: short-lived quiz pages (answered in <reportInterval) only send
+    // this unload beacon, so without scoring here a flag is never raised.
+    const interaction = Interaction.analyze();
+    const fingerprint = lastFingerprint || {score: 0};
+    const comet = extractCometSignals(fingerprint, interaction);
+    const combinedScore = calculateCombinedScore(
+        fingerprint.score,
+        interaction.score,
+        comet.score
+    );
+    const verdict = getVerdict(combinedScore);
+    const beaconData = buildCombinedPayload(fingerprint, interaction, comet, combinedScore, verdict);
+
+    const payload = {
+        sesskey: config.sessionKey,
+        contextid: config.contextId,
+        sessionid: sessionId,
+        signaltype: 'unload',
+        signaldata: JSON.stringify(beaconData),
+    };
+
+    const url = M.cfg.wwwroot + '/local/agentdetect/beacon.php';
+    navigator.sendBeacon(url, JSON.stringify(payload));
 };
 
 const handleVisibilityChange = async() => {

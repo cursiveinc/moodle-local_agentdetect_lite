@@ -72,6 +72,14 @@ class signal_manager {
         $combinedscore = $data['combinedScore'] ?? $data['combinedscore'] ?? null;
         $verdict = $data['verdict'] ?? null;
 
+        // Safety net: if a partial payload arrives without combinedscore (e.g.
+        // an older client sending an interaction-only unload beacon), fall back
+        // to interactionscore so flagging still runs. Without this, a page
+        // answered in less than reportInterval ms never raises a flag.
+        if ($combinedscore === null && $interactionscore !== null) {
+            $combinedscore = $interactionscore;
+        }
+
         // Build the record.
         $record = new \stdClass();
         $record->userid = $userid;
