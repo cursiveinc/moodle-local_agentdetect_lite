@@ -48,6 +48,41 @@ let initialized = false;
 // inside beforeunload (Fingerprint.collect is async and cannot be awaited there).
 let lastFingerprint = null;
 
+// Moodle question type classes used on div.que elements. Used to tell the
+// interaction analyzer whether the page contains text-input questions (so
+// zero_keystrokes is a meaningful agent signal) or only click-only questions.
+const KNOWN_QTYPES = [
+    'multichoice', 'multichoiceset', 'truefalse', 'match', 'shortanswer',
+    'numerical', 'essay', 'calculated', 'calculatedmulti', 'calculatedsimple',
+    'ddwtos', 'ddimageortext', 'ddmarker', 'gapselect', 'multianswer',
+    'ordering', 'randomsamatch', 'description',
+];
+
+/**
+ * Scan the DOM for Moodle quiz question elements and extract their qtype
+ * classes. Moodle renders each question as div.que with classes like
+ * "que multichoice deferredfeedback notyetanswered" — we pick out the tokens
+ * that match known question types.
+ *
+ * @returns {Array<string>} Array of qtype strings found on this page.
+ */
+const detectQuestionTypes = () => {
+    const types = [];
+    try {
+        const elements = document.querySelectorAll('div.que');
+        elements.forEach((el) => {
+            for (const qt of KNOWN_QTYPES) {
+                if (el.classList.contains(qt) && !types.includes(qt)) {
+                    types.push(qt);
+                }
+            }
+        });
+    } catch (e) {
+        // Ignore DOM access errors.
+    }
+    return types;
+};
+
 /**
  * Initialize the agent detection system.
  *
@@ -72,6 +107,7 @@ export const init = async(options = {}) => {
     }
 
     Interaction.startMonitoring({contextId: config.contextId});
+    Interaction.noteQuestionTypes(detectQuestionTypes());
 
     const initialFingerprint = await Fingerprint.collect();
     lastFingerprint = initialFingerprint;
@@ -140,6 +176,8 @@ const stopPeriodicReporting = () => {
  * @returns {Promise<Object>} Combined analysis results.
  */
 export const collectAndReport = async() => {
+    // Refresh question-type context in case the DOM was updated (multi-page quizzes).
+    Interaction.noteQuestionTypes(detectQuestionTypes());
     const fingerprint = await Fingerprint.collect();
     lastFingerprint = fingerprint;
     const interaction = Interaction.analyze();

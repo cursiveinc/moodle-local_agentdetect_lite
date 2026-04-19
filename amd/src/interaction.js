@@ -63,7 +63,25 @@ const eventStore = {
     pageLoadCount: 1,
     pageStartTime: Date.now(), // Timestamp when the current page loaded (not overwritten by restore).
     perPageStats: [], // Per-page {moves, clicks, keys, scrolls} from prior pages.
+    questionTypes: [], // Moodle qtype classes observed across pages (multichoice, essay, etc.).
 };
+
+// Question types where typing on the answer inputs is impossible or not expected.
+// Presence of any *other* qtype (essay, shortanswer, numerical, calculated, multianswer)
+// means zero_keystrokes remains a meaningful agent signal.
+const CLICK_ONLY_QTYPES = [
+    'multichoice',
+    'multichoiceset',
+    'truefalse',
+    'match',
+    'ddwtos',
+    'ddimageortext',
+    'ddmarker',
+    'gapselect',
+    'ordering',
+    'randomsamatch',
+    'description',
+];
 
 /**
  * Context ID for sessionStorage scoping (set in startMonitoring).
@@ -135,6 +153,27 @@ export const startMonitoring = (options = {}) => {
     // Pointer event tracking (for CDP dispatch detection).
     document.addEventListener('pointerdown', handlePointerDown, {capture: true, passive: true});
     document.addEventListener('pointermove', handlePointerMove, {passive: true});
+};
+
+/**
+ * Record Moodle question types observed on the current page. Accumulated across
+ * page loads so the analyzer can tell whether the whole session so far was
+ * click-only (no text-input qtypes present).
+ *
+ * @param {Array<string>} types Array of qtype class tokens (multichoice, essay, ...).
+ * @returns {void}
+ */
+export const noteQuestionTypes = (types) => {
+    if (!Array.isArray(types)) {
+        return;
+    }
+    for (const t of types) {
+        if (t && !eventStore.questionTypes.includes(t)) {
+            eventStore.questionTypes.push(t);
+        }
+    }
+    // Invalidate cached analysis so subsequent analyze() uses the new context.
+    analysisCache = null;
 };
 
 /**
@@ -593,8 +632,10 @@ const analyzeMouseMovement = () => {
                 value: movePerClick,
                 weight: 10,
             });
-        } else if (movePerClick < 5) {
-            // Very low mouse movement — suspicious but not definitive.
+        } else if (movePerClick < 3) {
+            // Low mouse movement — suspicious but not definitive. Threshold tightened
+            // from 5 to 3 after observing trackpad / decisive-clicker humans landing
+            // at 3–4 moves/click on multichoice quizzes.
             anomalies.push({
                 name: 'comet.low_mouse_to_action_ratio',
                 value: movePerClick,
@@ -742,10 +783,16 @@ const analyzeKeystrokes = () => {
     const anomalies = [];
     const keystrokes = eventStore.keystrokes.filter((k) => k.type === 'down');
 
-    // Zero keystrokes across multiple pages with significant click activity
-    // is a strong agent indicator. Humans press Tab, Space, Enter, arrow keys
-    // even on MCQ quizzes. Require 2+ pages to avoid penalising the first page load.
-    if (keystrokes.length === 0 && eventStore.clicks.length >= 5 && eventStore.pageLoadCount >= 2) {
+    // Zero keystrokes is only meaningful when at least one text-input question
+    // type is present in the session. An all-multichoice / true-false quiz
+    // legitimately produces zero keystrokes for a decisive human clicker, so
+    // firing this signal there generates false positives.
+    const hasTextInputQuestion = eventStore.questionTypes.length > 0 &&
+        eventStore.questionTypes.some((t) => !CLICK_ONLY_QTYPES.includes(t));
+    const noQuestionContext = eventStore.questionTypes.length === 0;
+    const zeroKeystrokesMeaningful = hasTextInputQuestion || noQuestionContext;
+    if (keystrokes.length === 0 && zeroKeystrokesMeaningful &&
+        eventStore.clicks.length >= 5 && eventStore.pageLoadCount >= 2) {
         anomalies.push({
             name: 'comet.zero_keystrokes',
             value: 0,
@@ -876,13 +923,21 @@ const analyzeEventSequence = () => {
     // Automated tools sometimes skip intermediate events.
 
     // Check ratio of hovers to clicks (humans hover a lot before clicking).
-    const hoverRatio = eventStore.hovers.length / Math.max(eventStore.clicks.length, 1);
-    if (hoverRatio < 2 && eventStore.clicks.length >= CONFIG.minClicks) {
-        anomalies.push({
-            name: 'sequence.low_hover_ratio',
-            value: hoverRatio,
-            weight: 5,
-        });
+    // Hovers are not persisted across pages (element references can't be
+    // serialised), but clicks are — so compare them on the current page only
+    // to avoid a stale cross-page ratio firing on humans.
+    const pageStart = eventStore.pageStartTime;
+    const currentHovers = eventStore.hovers.filter((h) => h.timestamp >= pageStart);
+    const currentClicks = eventStore.clicks.filter((c) => c.timestamp >= pageStart);
+    if (currentClicks.length >= CONFIG.minClicks) {
+        const hoverRatio = currentHovers.length / Math.max(currentClicks.length, 1);
+        if (hoverRatio < 2) {
+            anomalies.push({
+                name: 'sequence.low_hover_ratio',
+                value: hoverRatio,
+                weight: 5,
+            });
+        }
     }
 
     // Check for focus changes without preceding clicks or tabs.
@@ -1145,10 +1200,12 @@ const analyzeCDPClickPatterns = () => {
 
     const ratio = zeroTrailClicks / validClicks;
     if (ratio > 0.85) {
+        // Weight reduced from 6 to 3: a 300ms pre-click mouseless window is common
+        // for humans who read the question, decide, then click without fidgeting.
         anomalies.push({
             name: 'comet.no_mousemove_trail',
             value: ratio,
-            weight: 6,
+            weight: 3,
         });
     }
 
@@ -1164,14 +1221,21 @@ const analyzeCDPClickPatterns = () => {
  */
 const analyzePointerEvents = () => {
     const anomalies = [];
-    const clicks = eventStore.clicks;
-    const pointerDowns = eventStore.pointerEvents.filter((p) => p.type === 'down');
+    // Pointer events are not persisted across pages (see saveToSessionStorage),
+    // but clicks are — so comparing them session-wide produces an artificially
+    // tiny ratio. Use the current-page window only for both numerator and
+    // denominator so the check is apples-to-apples.
+    const pageStart = eventStore.pageStartTime;
+    const currentClicks = eventStore.clicks.filter((c) => c.timestamp >= pageStart);
+    const currentPointerDowns = eventStore.pointerEvents.filter(
+        (p) => p.type === 'down' && p.timestamp >= pageStart
+    );
 
-    if (clicks.length < 3) {
+    if (currentClicks.length < 3) {
         return anomalies;
     }
 
-    const ratio = pointerDowns.length / clicks.length;
+    const ratio = currentPointerDowns.length / currentClicks.length;
     if (ratio < 0.3) {
         anomalies.push({
             name: 'comet.missing_pointer_events',
@@ -1318,6 +1382,11 @@ const loadFromSessionStorage = () => {
             eventStore.perPageStats = data.perPageStats;
         }
 
+        // Restore accumulated question types observed across pages.
+        if (data.questionTypes && Array.isArray(data.questionTypes)) {
+            eventStore.questionTypes = data.questionTypes;
+        }
+
         // Invalidate analysis cache since we loaded new data.
         analysisCache = null;
     } catch (e) {
@@ -1350,6 +1419,7 @@ export const saveToSessionStorage = () => {
             startTime: eventStore.startTime,
             pageLoadCount: eventStore.pageLoadCount,
             perPageStats: updatedPerPageStats,
+            questionTypes: eventStore.questionTypes,
             mouseMoves: eventStore.mouseMoves.slice(-SLICE).map((m) => ({
                 x: m.x,
                 y: m.y,
@@ -1419,6 +1489,7 @@ export const reset = () => {
 export default {
     startMonitoring,
     stopMonitoring,
+    noteQuestionTypes,
     analyze,
     getRawData,
     reset,
