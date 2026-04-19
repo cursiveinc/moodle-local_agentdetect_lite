@@ -272,7 +272,12 @@ const buildCombinedPayload = (fp, inter, cometSummary, combinedScore, verdict) =
     },
     combinedScore,
     verdict,
-    detectedAgent: cometSummary.detected ? 'comet_agentic' : null,
+    // detectedAgent is only promoted to 'comet_agentic' once the comet score
+    // clears the same >= 40 threshold the combined-score formula uses for its
+    // bonus, so teachers do not see an AGENT badge next to a LOW_SUSPICION
+    // verdict when a single weight-3 signal (e.g. comet.zero_keystrokes)
+    // fires on its own.
+    detectedAgent: (cometSummary.detected && cometSummary.score >= 40) ? 'comet_agentic' : null,
 });
 
 /**

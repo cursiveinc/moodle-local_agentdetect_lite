@@ -439,8 +439,14 @@ if (empty($signals)) {
             );
         }
 
-        // Agent detection badge.
-        if (isset($data->detectedAgent) && $data->detectedAgent === 'comet_agentic') {
+        // Agent detection badge — only show when the comet score clears the
+        // 'actually suspicious' threshold. This re-applies the gate at render
+        // time so rows written before the client-side gate existed still
+        // render correctly (the stored detectedAgent field on those rows is
+        // frozen as 'comet_agentic' regardless of score).
+        $cometscorefromdata = (int) ($data->comet->score ?? 0);
+        if (isset($data->detectedAgent) && $data->detectedAgent === 'comet_agentic'
+            && $cometscorefromdata >= 40) {
             $verdict .= ' ' . html_writer::tag(
                 'span',
                 get_string('report:cometagent', 'local_agentdetect'),
