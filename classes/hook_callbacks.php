@@ -60,7 +60,7 @@ class hook_callbacks {
      * Load the detection engine on quiz pages only.
      */
     protected static function load_detector(): void {
-        global $PAGE;
+        global $PAGE, $USER;
 
         if (strpos($PAGE->pagetype, 'mod-quiz-') !== 0) {
             return;
@@ -73,6 +73,7 @@ class hook_callbacks {
             'reportInterval' => (int) get_config('local_agentdetect', 'reportinterval') ?: 30000,
             'minReportScore' => (int) get_config('local_agentdetect', 'minreportscore') ?: 10,
             'contextId' => $context->id,
+            'userId' => (int) $USER->id,
             'sessionKey' => sesskey(),
             'debug' => (bool) get_config('local_agentdetect', 'debug'),
         ];

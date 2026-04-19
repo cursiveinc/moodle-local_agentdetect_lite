@@ -95,6 +95,15 @@ const CLICK_ONLY_QTYPES = [
 let contextId = null;
 
 /**
+ * User ID for sessionStorage scoping (set in startMonitoring). Prevents two
+ * test accounts sharing a browser tab from contaminating each other's event
+ * pools through the cross-page accumulation store.
+ *
+ * @type {number|null}
+ */
+let userId = null;
+
+/**
  * Analysis results cache.
  *
  * @type {Object|null}
@@ -122,8 +131,31 @@ export const startMonitoring = (options = {}) => {
 
     isMonitoring = true;
     contextId = options.contextId || null;
+    userId = options.userId || null;
     eventStore.startTime = Date.now();
     eventStore.pageStartTime = Date.now();
+
+    // Purge stale event buckets left behind by prior users in the same tab,
+    // plus the legacy key format that didn't include a userId at all.
+    try {
+        const keep = getStorageKey();
+        const toRemove = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            if (!key || !key.startsWith('agentdetect_events')) {
+                continue;
+            }
+            if (key === keep) {
+                continue;
+            }
+            toRemove.push(key);
+        }
+        for (const k of toRemove) {
+            sessionStorage.removeItem(k);
+        }
+    } catch (e) {
+        // Ignore storage errors.
+    }
 
     // Restore accumulated events from prior pages in this session.
     // Note: loadFromSessionStorage overwrites startTime with the session origin
@@ -1361,7 +1393,8 @@ const analyzeScrollClickCorrelation = () => {
  * @returns {string} Storage key scoped by context.
  */
 const getStorageKey = () => {
-    return contextId ? `agentdetect_events_${contextId}` : 'agentdetect_events';
+    const uid = userId || 'anon';
+    return contextId ? `agentdetect_events_${uid}_${contextId}` : `agentdetect_events_${uid}`;
 };
 
 /**

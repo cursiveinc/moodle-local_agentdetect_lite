@@ -34,6 +34,7 @@ let config = {
     reportInterval: 30000,
     minReportScore: 10,
     contextId: null,
+    userId: null,
     sessionKey: null,
     debug: false,
 };
@@ -106,7 +107,7 @@ export const init = async(options = {}) => {
         Log.debug('[AgentDetect] Initializing', {sessionId});
     }
 
-    Interaction.startMonitoring({contextId: config.contextId});
+    Interaction.startMonitoring({contextId: config.contextId, userId: config.userId});
     Interaction.noteQuestionTypes(detectQuestionTypes());
 
     const initialFingerprint = await Fingerprint.collect();
@@ -131,13 +132,17 @@ const generateSessionId = () => {
 };
 
 const restoreOrCreateSessionId = () => {
+    // Scope session ID to the current user so two admins / test accounts
+    // sharing a browser tab don't inherit each other's sessionId and, via
+    // the ratio analyses, each other's event history.
     const storageKey = 'agentdetect_session';
     try {
         const stored = sessionStorage.getItem(storageKey);
         if (stored) {
             const parsed = JSON.parse(stored);
             const age = Date.now() - (parsed.timestamp || 0);
-            if (age < SESSION_MAX_AGE && parsed.id) {
+            const sameUser = !config.userId || parsed.userId === config.userId;
+            if (sameUser && age < SESSION_MAX_AGE && parsed.id) {
                 return parsed.id;
             }
         }
@@ -147,7 +152,11 @@ const restoreOrCreateSessionId = () => {
 
     const newId = generateSessionId();
     try {
-        sessionStorage.setItem(storageKey, JSON.stringify({id: newId, timestamp: Date.now()}));
+        sessionStorage.setItem(storageKey, JSON.stringify({
+            id: newId,
+            userId: config.userId || null,
+            timestamp: Date.now(),
+        }));
     } catch (e) {
         // Ignore.
     }
