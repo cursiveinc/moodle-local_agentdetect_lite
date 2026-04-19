@@ -237,8 +237,17 @@ function local_agentdetect_display_student_signals(int $courseid, int $userid, c
     [$sessinsql, $sessparams] = $DB->get_in_or_equal($sessionids, SQL_PARAMS_NAMED, 'sess');
     $sessparams['userid'] = $userid;
 
+    // s.id is listed first so Moodle's get_records_sql keys the result array
+    // by the primary key. Without it, Moodle defaults to keying on the first
+    // selected column (sessionid here) — every row in a multi-page session
+    // shares the same sessionid, so collisions leave only the last-iterated
+    // row per session, which with ORDER BY combinedscore DESC is the
+    // *lowest*-scoring record. That caused the per-session loop below to bind
+    // to a near-empty low-score signal even when high-score 100-point agent
+    // signals existed for the same session, rendering "No detection signals
+    // found" on agent-heavy sessions.
     $allsignalrecords = $DB->get_records_sql(
-        "SELECT s.sessionid, s.signaldata, s.combinedscore, s.verdict
+        "SELECT s.id, s.sessionid, s.signaldata, s.combinedscore, s.verdict
            FROM {local_agentdetect_signals} s
           WHERE s.sessionid {$sessinsql}
             AND s.userid = :userid
