@@ -575,6 +575,8 @@ export const analyze = () => {
             focusChanges: eventStore.focusChanges.length,
             pointerEvents: eventStore.pointerEvents.length,
         },
+        questionTypes: eventStore.questionTypes.slice(),
+        textInputFocusCount: eventStore.textInputFocusCount,
         anomalies: [],
         score: 0,
     };

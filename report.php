@@ -67,6 +67,44 @@ if ($download === 'json') {
         $params
     );
 
+    // Resolve contextid -> course / module info once per distinct contextid.
+    $contextcache = [];
+    $resolvecontext = static function(?int $ctxid) use (&$contextcache): ?array {
+        if (empty($ctxid)) {
+            return null;
+        }
+        if (array_key_exists($ctxid, $contextcache)) {
+            return $contextcache[$ctxid];
+        }
+        $info = ['id' => (int) $ctxid];
+        $context = context::instance_by_id($ctxid, IGNORE_MISSING);
+        if (!$context) {
+            $contextcache[$ctxid] = $info;
+            return $info;
+        }
+        if ($context instanceof context_module) {
+            $cm = get_coursemodule_from_id(null, $context->instanceid, 0, false, IGNORE_MISSING);
+            if ($cm) {
+                $course = get_course($cm->course);
+                $info['course_id'] = (int) $course->id;
+                $info['course_shortname'] = $course->shortname;
+                $info['course_fullname'] = $course->fullname;
+                $info['module_type'] = $cm->modname;
+                $info['module_id'] = (int) $cm->id;
+                $info['module_name'] = $cm->name;
+            }
+        } else if ($context instanceof context_course) {
+            $course = get_course($context->instanceid);
+            $info['course_id'] = (int) $course->id;
+            $info['course_shortname'] = $course->shortname;
+            $info['course_fullname'] = $course->fullname;
+        } else {
+            $info['level'] = $context->get_context_name(false);
+        }
+        $contextcache[$ctxid] = $info;
+        return $info;
+    };
+
     // Build JSON output.
     $output = [];
     foreach ($signals as $signal) {
@@ -80,6 +118,9 @@ if ($download === 'json') {
             'email' => $signal->email,
             'session_id' => $signal->sessionid,
             'signal_type' => $signal->signaltype,
+            'context' => $resolvecontext((int) $signal->contextid),
+            'question_types' => $data->interaction->questionTypes ?? [],
+            'text_input_focus_count' => $data->interaction->textInputFocusCount ?? 0,
             'page_url' => $data->pageUrl ?? null,
             'page_title' => $data->pageTitle ?? null,
             'fp_score' => $signal->fingerprintscore,

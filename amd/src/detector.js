@@ -261,6 +261,8 @@ const buildCombinedPayload = (fp, inter, cometSummary, combinedScore, verdict) =
         eventCounts: inter.eventCounts,
         duration: inter.duration,
         pageLoadCount: inter.pageLoadCount,
+        questionTypes: inter.questionTypes,
+        textInputFocusCount: inter.textInputFocusCount,
         anomalies: topSignals(inter.anomalies),
     },
     comet: {

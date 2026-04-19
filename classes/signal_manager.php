@@ -163,11 +163,22 @@ class signal_manager {
             ];
         }
         if (isset($data['interaction']) && is_array($data['interaction'])) {
+            $qtypes = $data['interaction']['questionTypes'] ?? [];
+            if (!is_array($qtypes)) {
+                $qtypes = [];
+            }
+            // Keep qtype list short and string-only; we only care about the
+            // set of kinds present, not ordering or duplicates.
+            $qtypes = array_values(array_unique(array_filter(
+                array_map(static fn($t) => is_string($t) ? $t : null, $qtypes)
+            )));
             $compact['interaction'] = [
                 'score' => (int) ($data['interaction']['score'] ?? 0),
                 'eventCounts' => $data['interaction']['eventCounts'] ?? null,
                 'duration' => (int) ($data['interaction']['duration'] ?? 0),
                 'pageLoadCount' => (int) ($data['interaction']['pageLoadCount'] ?? 0),
+                'questionTypes' => $qtypes,
+                'textInputFocusCount' => (int) ($data['interaction']['textInputFocusCount'] ?? 0),
                 'anomalies' => $limit($data['interaction']['anomalies'] ?? []),
             ];
         }
