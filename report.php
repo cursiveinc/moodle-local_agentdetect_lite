@@ -302,6 +302,7 @@ if (empty($signals)) {
     $table->head = [
         get_string('time'),
         get_string('user'),
+        get_string('report:context', 'local_agentdetect'),
         get_string('page', 'local_agentdetect'),
         get_string('type', 'local_agentdetect'),
         get_string('report:fp', 'local_agentdetect'),
@@ -467,6 +468,7 @@ if (empty($signals)) {
         $table->data[] = [
             $time,
             $userlink,
+            local_agentdetect_format_context_link($signal->contextid),
             $pagelink,
             $signal->signaltype,
             $fpscore,
@@ -498,6 +500,7 @@ if (empty($signals)) {
         $flagtable = new html_table();
         $flagtable->head = [
             get_string('user'),
+            get_string('report:context', 'local_agentdetect'),
             get_string('coursereport:flagtype', 'local_agentdetect'),
             get_string('coursereport:maxscore', 'local_agentdetect'),
             get_string('coursereport:detectioncount', 'local_agentdetect'),
@@ -530,6 +533,7 @@ if (empty($signals)) {
 
             $flagtable->data[] = [
                 $userlink,
+                local_agentdetect_format_context_link($flag->contextid),
                 $flagtype,
                 $flag->maxscore,
                 $flag->detectioncount,

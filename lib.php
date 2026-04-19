@@ -30,6 +30,50 @@
 defined('MOODLE_INTERNAL') || die();
 
 /**
+ * Format a context ID as a human-readable link to the course / quiz it belongs to.
+ *
+ * Used by the admin Signals and Flags tables to help teachers and admins jump
+ * from a flagged session straight to the quiz (or course) where the detection
+ * happened. Handles deleted contexts gracefully.
+ *
+ * @param int|null $contextid The stored context ID, may be null for legacy rows.
+ * @return string HTML fragment — a link, a plain label, or a dash.
+ */
+function local_agentdetect_format_context_link(?int $contextid): string {
+    if (empty($contextid)) {
+        return html_writer::tag('span', '-', ['class' => 'text-muted']);
+    }
+
+    $context = context::instance_by_id($contextid, IGNORE_MISSING);
+    if (!$context) {
+        return html_writer::tag('span', '-', ['class' => 'text-muted', 'title' => 'Context ' . $contextid . ' no longer exists']);
+    }
+
+    if ($context instanceof context_module) {
+        $cm = get_coursemodule_from_id(null, $context->instanceid, 0, false, IGNORE_MISSING);
+        if (!$cm) {
+            return html_writer::tag('span', '-', ['class' => 'text-muted']);
+        }
+        $label = format_string($cm->name);
+        $url = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
+        $icon = html_writer::tag('span', ucfirst($cm->modname), ['class' => 'badge badge-light mr-1']);
+        return $icon . html_writer::link($url, $label, ['title' => $cm->modname . ': ' . $label]);
+    }
+
+    if ($context instanceof context_course) {
+        $course = get_course($context->instanceid);
+        $url = new moodle_url('/course/view.php', ['id' => $course->id]);
+        return html_writer::link($url, format_string($course->shortname), ['title' => format_string($course->fullname)]);
+    }
+
+    if ($context instanceof context_system) {
+        return html_writer::tag('span', get_string('site'), ['class' => 'text-muted']);
+    }
+
+    return html_writer::tag('span', $context->get_context_name(false), ['class' => 'text-muted']);
+}
+
+/**
  * Extend course navigation with agent detection report link.
  *
  * @param navigation_node $navigation The navigation node.

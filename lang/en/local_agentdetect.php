@@ -91,6 +91,7 @@ $string['report:anomalyweight'] = '({$a->value}) w:{$a->weight}';
 $string['report:avgscore'] = 'Avg score';
 $string['report:clearfilters'] = 'Clear filters';
 $string['report:combined'] = 'Combined';
+$string['report:context'] = 'Context';
 $string['report:cometagent'] = 'Agent';
 $string['report:cometagentscore'] = '[AGENT] Score: {$a}';
 $string['report:cometsignal'] = '[AGENT] {$a->name} w:{$a->weight}';

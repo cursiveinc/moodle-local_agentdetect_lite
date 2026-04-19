@@ -207,10 +207,13 @@ function local_agentdetect_display_student_signals(int $courseid, int $userid, c
     $ctxparams['userid'] = $userid;
 
     // Get session summaries — grouped by sessionid, sorted by highest score first.
+    // Verdict is derived per-session below from the highest-scoring signal record,
+    // not via SQL MAX(verdict) which would return the alphabetic max of the enum
+    // strings (e.g. LIKELY_HUMAN > HIGH_CONFIDENCE_AGENT lexically) and label
+    // agent sessions as human whenever the early-session report fires with score 0.
     $sql = "SELECT s.sessionid,
                    MIN(s.timecreated) AS firstseen,
                    MAX(s.combinedscore) AS maxscore,
-                   MAX(s.verdict) AS verdict,
                    COUNT(s.id) AS signalcount
               FROM {local_agentdetect_signals} s
              WHERE s.userid = :userid
@@ -287,12 +290,16 @@ function local_agentdetect_display_student_signals(int $courseid, int $userid, c
 
         $sessionswithsignals++;
 
-        // Track roll-up metrics.
+        // Track roll-up metrics. Verdict comes from the highest-scoring signal
+        // record for the session (falling back to a score-derived verdict)
+        // so we never end up with score=100 + verdict=LIKELY_HUMAN on the
+        // same card due to SQL MAX(verdict) alphabetic ordering.
         $score = (int) $session->maxscore;
         if ($score > $overallmaxscore) {
             $overallmaxscore = $score;
         }
-        $verdict = $session->verdict ?? 'LIKELY_HUMAN';
+        $verdict = $signalrecord->verdict ?? local_agentdetect_verdict_from_score($score);
+        $session->verdict = $verdict;
         $currentseverity = $verdictseverity[$verdict] ?? 0;
         $maxseverity = $verdictseverity[$overallmaxverdict] ?? 0;
         if ($currentseverity > $maxseverity) {
@@ -469,6 +476,32 @@ function local_agentdetect_format_score_badge($score): string {
  * @param string|null $verdict The verdict string.
  * @return string HTML badge.
  */
+/**
+ * Derive a verdict string from a numeric combined score.
+ *
+ * Mirrors the client-side getVerdict() thresholds in amd/src/detector.js so
+ * the server can always produce a verdict even when a specific record is
+ * missing one.
+ *
+ * @param int $score Combined score 0–100.
+ * @return string Verdict enum.
+ */
+function local_agentdetect_verdict_from_score(int $score): string {
+    if ($score >= 80) {
+        return 'HIGH_CONFIDENCE_AGENT';
+    }
+    if ($score >= 60) {
+        return 'PROBABLE_AGENT';
+    }
+    if ($score >= 40) {
+        return 'SUSPICIOUS';
+    }
+    if ($score >= 20) {
+        return 'LOW_SUSPICION';
+    }
+    return 'LIKELY_HUMAN';
+}
+
 function local_agentdetect_format_verdict_badge(?string $verdict): string {
     if ($verdict === null) {
         return '-';
