@@ -64,7 +64,11 @@ const eventStore = {
     pageStartTime: Date.now(), // Timestamp when the current page loaded (not overwritten by restore).
     perPageStats: [], // Per-page {moves, clicks, keys, scrolls} from prior pages.
     questionTypes: [], // Moodle qtype classes observed across pages (multichoice, essay, etc.).
+    textInputFocusCount: 0, // How many times a text input was focused across the whole session.
 };
+
+// Tag name + input type combos we treat as "text input" for zero-keystroke gating.
+const TEXT_INPUT_TYPES = new Set(['', 'text', 'email', 'search', 'url', 'password', 'number', 'tel']);
 
 // Question types where typing on the answer inputs is impossible or not expected.
 // Presence of any *other* qtype (essay, shortanswer, numerical, calculated, multianswer)
@@ -372,11 +376,20 @@ const handleScroll = () => {
  * @param {FocusEvent} e Focus event.
  */
 const handleFocusIn = (e) => {
+    const target = e.target;
+    const tag = (target.tagName || '').toUpperCase();
+    const inputType = ((target.type || '') + '').toLowerCase();
+    const isTextInput = tag === 'TEXTAREA' ||
+        (tag === 'INPUT' && TEXT_INPUT_TYPES.has(inputType)) ||
+        target.isContentEditable === true;
+    if (isTextInput) {
+        eventStore.textInputFocusCount++;
+    }
     addToStore('focusChanges', {
         target: {
-            tagName: e.target.tagName,
-            id: e.target.id,
-            type: e.target.type,
+            tagName: target.tagName,
+            id: target.id,
+            type: target.type,
         },
         timestamp: Date.now(),
         type: 'in',
@@ -597,10 +610,13 @@ const analyzeMouseMovement = () => {
     // Check for no mouse movement at all (common in automated tests).
     const duration = Date.now() - eventStore.startTime;
     if (moves.length < duration / 5000) { // Less than 1 move per 5 seconds.
+        // Weight reduced from 5 to 3: a reader-style human studying questions
+        // before clicking easily trips this on a long session, and it's weak
+        // evidence of automation on its own.
         anomalies.push({
             name: 'mouse.sparse_movement',
             value: moves.length,
-            weight: 5,
+            weight: 3,
         });
     }
 
@@ -783,20 +799,26 @@ const analyzeKeystrokes = () => {
     const anomalies = [];
     const keystrokes = eventStore.keystrokes.filter((k) => k.type === 'down');
 
-    // Zero keystrokes is only meaningful when at least one text-input question
-    // type is present in the session. An all-multichoice / true-false quiz
-    // legitimately produces zero keystrokes for a decisive human clicker, so
-    // firing this signal there generates false positives.
+    // Zero keystrokes gating. Two layers of context:
+    //   1. Question-type context: if the whole session is click-only qtypes
+    //      (multichoice, truefalse, ddwtos, ...) typing is physically
+    //      unnecessary — suppress the signal entirely.
+    //   2. Text-input-focus context: if text-input qtypes exist but the user
+    //      has not focused a text input yet (common for readers who work
+    //      through MCQs before tackling the essay), reduce the weight from
+    //      9 to 3. A real agent that navigates to an essay input without
+    //      typing will still register the focus and earn the full weight.
     const hasTextInputQuestion = eventStore.questionTypes.length > 0 &&
         eventStore.questionTypes.some((t) => !CLICK_ONLY_QTYPES.includes(t));
     const noQuestionContext = eventStore.questionTypes.length === 0;
     const zeroKeystrokesMeaningful = hasTextInputQuestion || noQuestionContext;
     if (keystrokes.length === 0 && zeroKeystrokesMeaningful &&
         eventStore.clicks.length >= 5 && eventStore.pageLoadCount >= 2) {
+        const focusedTextInput = eventStore.textInputFocusCount > 0;
         anomalies.push({
             name: 'comet.zero_keystrokes',
-            value: 0,
-            weight: 9,
+            value: focusedTextInput ? 'focused' : 'unfocused',
+            weight: focusedTextInput ? 9 : 3,
         });
     }
 
@@ -1387,6 +1409,12 @@ const loadFromSessionStorage = () => {
             eventStore.questionTypes = data.questionTypes;
         }
 
+        // Restore text-input focus counter so zero-keystroke weighting keeps
+        // its context across a multi-page quiz.
+        if (typeof data.textInputFocusCount === 'number') {
+            eventStore.textInputFocusCount = data.textInputFocusCount;
+        }
+
         // Invalidate analysis cache since we loaded new data.
         analysisCache = null;
     } catch (e) {
@@ -1420,6 +1448,7 @@ export const saveToSessionStorage = () => {
             pageLoadCount: eventStore.pageLoadCount,
             perPageStats: updatedPerPageStats,
             questionTypes: eventStore.questionTypes,
+            textInputFocusCount: eventStore.textInputFocusCount,
             mouseMoves: eventStore.mouseMoves.slice(-SLICE).map((m) => ({
                 x: m.x,
                 y: m.y,
