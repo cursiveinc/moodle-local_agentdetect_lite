@@ -237,8 +237,8 @@ function local_agentdetect_display_student_signals(int $courseid, int $userid, c
     [$sessinsql, $sessparams] = $DB->get_in_or_equal($sessionids, SQL_PARAMS_NAMED, 'sess');
     $sessparams['userid'] = $userid;
 
-    // s.id is listed first so Moodle's get_records_sql keys the result array
-    // by the primary key. Without it, Moodle defaults to keying on the first
+    // The primary key s.id is listed first so Moodle's get_records_sql keys
+    // the result array by id. Without it, Moodle defaults to keying on the first
     // selected column (sessionid here) — every row in a multi-page session
     // shares the same sessionid, so collisions leave only the last-iterated
     // row per session, which with ORDER BY combinedscore DESC is the
@@ -511,6 +511,13 @@ function local_agentdetect_verdict_from_score(int $score): string {
     return 'LIKELY_HUMAN';
 }
 
+/**
+ * Format a verdict enum into a colour-coded badge for display.
+ *
+ * @param string|null $verdict One of HIGH_CONFIDENCE_AGENT, PROBABLE_AGENT,
+ *                             SUSPICIOUS, LOW_SUSPICION, LIKELY_HUMAN, or null.
+ * @return string HTML for the badge, or '-' when the verdict is null.
+ */
 function local_agentdetect_format_verdict_badge(?string $verdict): string {
     if ($verdict === null) {
         return '-';

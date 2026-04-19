@@ -32,7 +32,6 @@ namespace local_agentdetect;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class hook_callbacks {
-
     /**
      * Inject detection JavaScript before the page footer is rendered.
      *

@@ -69,7 +69,7 @@ if ($download === 'json') {
 
     // Resolve contextid -> course / module info once per distinct contextid.
     $contextcache = [];
-    $resolvecontext = static function(?int $ctxid) use (&$contextcache): ?array {
+    $resolvecontext = static function (?int $ctxid) use (&$contextcache): ?array {
         if (empty($ctxid)) {
             return null;
         }
@@ -173,366 +173,364 @@ $tabs = [
 echo $OUTPUT->tabtree($tabs, $tab);
 
 if ($tab === 'signals') {
-
-// Get all users with signals for the dropdown.
-$userswithsignals = $DB->get_records_sql(
-    "SELECT DISTINCT u.id, u.firstname, u.lastname, u.email,
-            MAX(s.combinedscore) as maxscore,
-            COUNT(s.id) as signalcount
-       FROM {local_agentdetect_signals} s
-       JOIN {user} u ON u.id = s.userid
-      GROUP BY u.id, u.firstname, u.lastname, u.email
-      ORDER BY maxscore DESC, u.lastname, u.firstname"
-);
-
-// Filter form.
-echo html_writer::start_div('card mb-4');
-echo html_writer::start_div('card-body');
-echo html_writer::tag('h5', get_string('report:filtersignals', 'local_agentdetect'), ['class' => 'card-title']);
-
-echo html_writer::start_tag('form', ['method' => 'get', 'action' => $PAGE->url->out_omit_querystring(), 'class' => 'form-inline']);
-echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'signals']);
-
-// User dropdown.
-echo html_writer::start_div('form-group mr-3 mb-2');
-echo html_writer::label(get_string('user') . ': ', 'userid', true, ['class' => 'mr-2']);
-$useroptions = [0 => get_string('report:allusers', 'local_agentdetect')];
-foreach ($userswithsignals as $u) {
-    $scorelabel = $u->maxscore >= 70 ? ' ⚠️' : ($u->maxscore >= 40 ? ' ⚡' : '');
-    $optionparams = (object) ['fullname' => fullname($u), 'signalcount' => $u->signalcount, 'maxscore' => $u->maxscore];
-    $useroptions[$u->id] = get_string('report:useroption', 'local_agentdetect', $optionparams) . $scorelabel;
-}
-echo html_writer::select($useroptions, 'userid', $userid, null, ['class' => 'form-control', 'id' => 'userid']);
-echo html_writer::end_div();
-
-// Session filter (only show if user selected).
-if ($userid) {
-    $sessions = $DB->get_records_sql(
-        "SELECT DISTINCT sessionid, MIN(timecreated) as firstseen, MAX(combinedscore) as maxscore
-           FROM {local_agentdetect_signals}
-          WHERE userid = :userid
-          GROUP BY sessionid
-          ORDER BY firstseen DESC",
-        ['userid' => $userid]
+    // Get all users with signals for the dropdown.
+    $userswithsignals = $DB->get_records_sql(
+        "SELECT DISTINCT u.id, u.firstname, u.lastname, u.email,
+                MAX(s.combinedscore) as maxscore,
+                COUNT(s.id) as signalcount
+           FROM {local_agentdetect_signals} s
+           JOIN {user} u ON u.id = s.userid
+          GROUP BY u.id, u.firstname, u.lastname, u.email
+          ORDER BY maxscore DESC, u.lastname, u.firstname"
     );
 
+    // Filter form.
+    echo html_writer::start_div('card mb-4');
+    echo html_writer::start_div('card-body');
+    echo html_writer::tag('h5', get_string('report:filtersignals', 'local_agentdetect'), ['class' => 'card-title']);
+
+    echo html_writer::start_tag('form', ['method' => 'get', 'action' => $PAGE->url->out_omit_querystring(), 'class' => 'form-inline']);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'signals']);
+
+    // User dropdown.
     echo html_writer::start_div('form-group mr-3 mb-2');
-    $sessionlabel = get_string('coursereport:sessionid', 'local_agentdetect') . ': ';
-    echo html_writer::label($sessionlabel, 'sessionid', true, ['class' => 'mr-2']);
-    $sessionoptions = ['' => get_string('report:allsessions', 'local_agentdetect')];
-    foreach ($sessions as $s) {
-        $sessionparams = (object) ['sessionid' => $s->sessionid, 'maxscore' => $s->maxscore ?? '?'];
-        $sessionoptions[$s->sessionid] = get_string('report:sessionoption', 'local_agentdetect', $sessionparams);
+    echo html_writer::label(get_string('user') . ': ', 'userid', true, ['class' => 'mr-2']);
+    $useroptions = [0 => get_string('report:allusers', 'local_agentdetect')];
+    foreach ($userswithsignals as $u) {
+        $scorelabel = $u->maxscore >= 70 ? ' ⚠️' : ($u->maxscore >= 40 ? ' ⚡' : '');
+        $optionparams = (object) ['fullname' => fullname($u), 'signalcount' => $u->signalcount, 'maxscore' => $u->maxscore];
+        $useroptions[$u->id] = get_string('report:useroption', 'local_agentdetect', $optionparams) . $scorelabel;
     }
-    echo html_writer::select($sessionoptions, 'sessionid', $sessionid, null, ['class' => 'form-control', 'id' => 'sessionid']);
+    echo html_writer::select($useroptions, 'userid', $userid, null, ['class' => 'form-control', 'id' => 'userid']);
     echo html_writer::end_div();
-}
 
-echo html_writer::tag(
-    'button',
-    get_string('report:filter', 'local_agentdetect'),
-    ['type' => 'submit', 'class' => 'btn btn-primary mb-2 mr-2']
-);
-if ($userid || $sessionid) {
-    echo html_writer::link(
-        new moodle_url('/local/agentdetect/report.php'),
-        get_string('report:clearfilters', 'local_agentdetect'),
-        ['class' => 'btn btn-secondary mb-2 mr-2']
-    );
-}
-
-// JSON download button.
-$downloadurl = new moodle_url('/local/agentdetect/report.php', [
-    'userid' => $userid,
-    'sessionid' => $sessionid,
-    'download' => 'json',
-]);
-echo html_writer::link(
-    $downloadurl,
-    get_string('report:downloadjson', 'local_agentdetect'),
-    ['class' => 'btn btn-outline-success mb-2']
-);
-
-echo html_writer::end_tag('form');
-
-echo html_writer::end_div();
-echo html_writer::end_div();
-
-// Build query based on filters.
-$where = [];
-$params = [];
-
-if ($userid) {
-    $where[] = 's.userid = :userid';
-    $params['userid'] = $userid;
-}
-if ($sessionid) {
-    $where[] = 's.sessionid = :sessionid';
-    $params['sessionid'] = $sessionid;
-}
-
-$wheresql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
-$limit = ($userid || $sessionid) ? 200 : 50;
-
-// Section header.
-if ($userid) {
-    $selecteduser = $DB->get_record('user', ['id' => $userid]);
-    echo html_writer::tag('h3', get_string('report:signalsfor', 'local_agentdetect', fullname($selecteduser)));
-} else {
-    echo html_writer::tag('h3', get_string('report:storedsignals', 'local_agentdetect'));
-}
-
-// Get signals.
-$signals = $DB->get_records_sql(
-    "SELECT s.*, u.firstname, u.lastname, u.email
-       FROM {local_agentdetect_signals} s
-       JOIN {user} u ON u.id = s.userid
-       {$wheresql}
-      ORDER BY s.timecreated DESC",
-    $params,
-    0,
-    $limit
-);
-
-if (empty($signals)) {
-    echo html_writer::div(get_string('report:nosignals', 'local_agentdetect'), 'alert alert-info');
-} else {
-    // Summary stats.
-    $countparams = $params;
-    $countwhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
-    $totalcount = $DB->count_records_sql(
-        "SELECT COUNT(*) FROM {local_agentdetect_signals} s {$countwhere}",
-        $countparams
-    );
-    $showingparams = (object) ['limit' => $limit, 'total' => $totalcount];
-    echo html_writer::tag('p', get_string('report:showing', 'local_agentdetect', $showingparams));
-
-    // If viewing a user, show summary stats.
+    // Session filter (only show if user selected).
     if ($userid) {
-        $stats = $DB->get_record_sql(
-            "SELECT COUNT(*) as total,
-                    MAX(combinedscore) as maxscore,
-                    AVG(combinedscore) as avgscore,
-                    SUM(CASE WHEN verdict = 'HIGH_CONFIDENCE_AGENT' THEN 1 ELSE 0 END) as high_count,
-                    SUM(CASE WHEN verdict = 'PROBABLE_AGENT' THEN 1 ELSE 0 END) as probable_count,
-                    SUM(CASE WHEN verdict = 'SUSPICIOUS' THEN 1 ELSE 0 END) as suspicious_count,
-                    SUM(CASE WHEN verdict = 'LIKELY_HUMAN' THEN 1 ELSE 0 END) as human_count
+        $sessions = $DB->get_records_sql(
+            "SELECT DISTINCT sessionid, MIN(timecreated) as firstseen, MAX(combinedscore) as maxscore
                FROM {local_agentdetect_signals}
-              WHERE userid = :userid",
+              WHERE userid = :userid
+              GROUP BY sessionid
+              ORDER BY firstseen DESC",
             ['userid' => $userid]
         );
 
-        $summaryparts = [];
-        $summaryparts[] = html_writer::tag('strong', get_string('report:usersummary', 'local_agentdetect'));
-        $summaryparts[] = get_string('report:maxscore', 'local_agentdetect') . ': '
-            . html_writer::tag('strong', $stats->maxscore) . ' | ';
-        $summaryparts[] = get_string('report:avgscore', 'local_agentdetect') . ': '
-            . html_writer::tag('strong', round($stats->avgscore, 1)) . ' | ';
-        $summaryparts[] = get_string('verdict:highconfidenceagent', 'local_agentdetect') . ': '
-            . html_writer::tag('span', $stats->high_count, ['class' => 'badge badge-danger']) . ' | ';
-        $summaryparts[] = get_string('verdict:probableagent', 'local_agentdetect') . ': '
-            . html_writer::tag('span', $stats->probable_count, ['class' => 'badge badge-warning']) . ' | ';
-        $summaryparts[] = get_string('verdict:suspicious', 'local_agentdetect') . ': '
-            . html_writer::tag('span', $stats->suspicious_count, ['class' => 'badge badge-warning']) . ' | ';
-        $summaryparts[] = get_string('verdict:likelyhuman', 'local_agentdetect') . ': '
-            . html_writer::tag('span', $stats->human_count, ['class' => 'badge badge-success']);
-        echo html_writer::div(implode(' ', $summaryparts), 'alert alert-secondary');
+        echo html_writer::start_div('form-group mr-3 mb-2');
+        $sessionlabel = get_string('coursereport:sessionid', 'local_agentdetect') . ': ';
+        echo html_writer::label($sessionlabel, 'sessionid', true, ['class' => 'mr-2']);
+        $sessionoptions = ['' => get_string('report:allsessions', 'local_agentdetect')];
+        foreach ($sessions as $s) {
+            $sessionparams = (object) ['sessionid' => $s->sessionid, 'maxscore' => $s->maxscore ?? '?'];
+            $sessionoptions[$s->sessionid] = get_string('report:sessionoption', 'local_agentdetect', $sessionparams);
+        }
+        echo html_writer::select($sessionoptions, 'sessionid', $sessionid, null, ['class' => 'form-control', 'id' => 'sessionid']);
+        echo html_writer::end_div();
     }
 
-    // Signals table.
-    $table = new html_table();
-    $table->head = [
-        get_string('time'),
-        get_string('user'),
-        get_string('report:context', 'local_agentdetect'),
-        get_string('page', 'local_agentdetect'),
-        get_string('type', 'local_agentdetect'),
-        get_string('report:fp', 'local_agentdetect'),
-        get_string('report:int', 'local_agentdetect'),
-        get_string('report:combined', 'local_agentdetect'),
-        get_string('coursereport:verdict', 'local_agentdetect'),
-        get_string('report:details', 'local_agentdetect'),
-    ];
-    $table->attributes['class'] = 'table table-striped table-sm';
-
-    foreach ($signals as $signal) {
-        $time = userdate($signal->timecreated, '%Y-%m-%d %H:%M:%S');
-
-        // User link.
-        $userlink = html_writer::link(
-            new moodle_url('/local/agentdetect/report.php', ['tab' => 'signals', 'userid' => $signal->userid]),
-            fullname($signal),
-            ['title' => $signal->email]
+    echo html_writer::tag(
+        'button',
+        get_string('report:filter', 'local_agentdetect'),
+        ['type' => 'submit', 'class' => 'btn btn-primary mb-2 mr-2']
+    );
+    if ($userid || $sessionid) {
+        echo html_writer::link(
+            new moodle_url('/local/agentdetect/report.php'),
+            get_string('report:clearfilters', 'local_agentdetect'),
+            ['class' => 'btn btn-secondary mb-2 mr-2']
         );
+    }
 
-        // Get page URL from signal data.
-        $data = json_decode($signal->signaldata);
-        $pageurl = $data->pageUrl ?? null;
-        $pagetitle = $data->pageTitle ?? null;
+    // JSON download button.
+    $downloadurl = new moodle_url('/local/agentdetect/report.php', [
+        'userid' => $userid,
+        'sessionid' => $sessionid,
+        'download' => 'json',
+    ]);
+    echo html_writer::link(
+        $downloadurl,
+        get_string('report:downloadjson', 'local_agentdetect'),
+        ['class' => 'btn btn-outline-success mb-2']
+    );
 
-        // Page link - show title or shortened URL.
-        // Validate URL scheme to prevent javascript: XSS links.
-        $safescheme = $pageurl && preg_match('/^https?:\/\//i', $pageurl);
-        if ($pageurl && $safescheme) {
-            $displaytext = $pagetitle ? $pagetitle : basename(parse_url($pageurl, PHP_URL_PATH));
-            if (strlen($displaytext) > 30) {
-                $displaytext = substr($displaytext, 0, 27) . '...';
-            }
-            $pagelink = html_writer::link(
-                $pageurl,
-                s($displaytext),
-                ['title' => s($pageurl), 'target' => '_blank']
+    echo html_writer::end_tag('form');
+
+    echo html_writer::end_div();
+    echo html_writer::end_div();
+
+    // Build query based on filters.
+    $where = [];
+    $params = [];
+
+    if ($userid) {
+        $where[] = 's.userid = :userid';
+        $params['userid'] = $userid;
+    }
+    if ($sessionid) {
+        $where[] = 's.sessionid = :sessionid';
+        $params['sessionid'] = $sessionid;
+    }
+
+    $wheresql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+    $limit = ($userid || $sessionid) ? 200 : 50;
+
+    // Section header.
+    if ($userid) {
+        $selecteduser = $DB->get_record('user', ['id' => $userid]);
+        echo html_writer::tag('h3', get_string('report:signalsfor', 'local_agentdetect', fullname($selecteduser)));
+    } else {
+        echo html_writer::tag('h3', get_string('report:storedsignals', 'local_agentdetect'));
+    }
+
+    // Get signals.
+    $signals = $DB->get_records_sql(
+        "SELECT s.*, u.firstname, u.lastname, u.email
+           FROM {local_agentdetect_signals} s
+           JOIN {user} u ON u.id = s.userid
+           {$wheresql}
+          ORDER BY s.timecreated DESC",
+        $params,
+        0,
+        $limit
+    );
+
+    if (empty($signals)) {
+        echo html_writer::div(get_string('report:nosignals', 'local_agentdetect'), 'alert alert-info');
+    } else {
+        // Summary stats.
+        $countparams = $params;
+        $countwhere = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+        $totalcount = $DB->count_records_sql(
+            "SELECT COUNT(*) FROM {local_agentdetect_signals} s {$countwhere}",
+            $countparams
+        );
+        $showingparams = (object) ['limit' => $limit, 'total' => $totalcount];
+        echo html_writer::tag('p', get_string('report:showing', 'local_agentdetect', $showingparams));
+
+        // If viewing a user, show summary stats.
+        if ($userid) {
+            $stats = $DB->get_record_sql(
+                "SELECT COUNT(*) as total,
+                        MAX(combinedscore) as maxscore,
+                        AVG(combinedscore) as avgscore,
+                        SUM(CASE WHEN verdict = 'HIGH_CONFIDENCE_AGENT' THEN 1 ELSE 0 END) as high_count,
+                        SUM(CASE WHEN verdict = 'PROBABLE_AGENT' THEN 1 ELSE 0 END) as probable_count,
+                        SUM(CASE WHEN verdict = 'SUSPICIOUS' THEN 1 ELSE 0 END) as suspicious_count,
+                        SUM(CASE WHEN verdict = 'LIKELY_HUMAN' THEN 1 ELSE 0 END) as human_count
+                   FROM {local_agentdetect_signals}
+                  WHERE userid = :userid",
+                ['userid' => $userid]
             );
-        } else if ($pageurl) {
-            // Non-http URL — render as escaped text, not a link.
-            $pagelink = html_writer::tag('span', s($pageurl), ['class' => 'text-muted']);
-        } else {
-            $pagelink = html_writer::tag('span', '-', ['class' => 'text-muted']);
+
+            $summaryparts = [];
+            $summaryparts[] = html_writer::tag('strong', get_string('report:usersummary', 'local_agentdetect'));
+            $summaryparts[] = get_string('report:maxscore', 'local_agentdetect') . ': '
+                . html_writer::tag('strong', $stats->maxscore) . ' | ';
+            $summaryparts[] = get_string('report:avgscore', 'local_agentdetect') . ': '
+                . html_writer::tag('strong', round($stats->avgscore, 1)) . ' | ';
+            $summaryparts[] = get_string('verdict:highconfidenceagent', 'local_agentdetect') . ': '
+                . html_writer::tag('span', $stats->high_count, ['class' => 'badge badge-danger']) . ' | ';
+            $summaryparts[] = get_string('verdict:probableagent', 'local_agentdetect') . ': '
+                . html_writer::tag('span', $stats->probable_count, ['class' => 'badge badge-warning']) . ' | ';
+            $summaryparts[] = get_string('verdict:suspicious', 'local_agentdetect') . ': '
+                . html_writer::tag('span', $stats->suspicious_count, ['class' => 'badge badge-warning']) . ' | ';
+            $summaryparts[] = get_string('verdict:likelyhuman', 'local_agentdetect') . ': '
+                . html_writer::tag('span', $stats->human_count, ['class' => 'badge badge-success']);
+            echo html_writer::div(implode(' ', $summaryparts), 'alert alert-secondary');
         }
 
-        // Color code scores.
-        $fpscore = $signal->fingerprintscore ?? '-';
-        $intscore = $signal->interactionscore ?? '-';
-        $combined = $signal->combinedscore ?? '-';
+        // Signals table.
+        $table = new html_table();
+        $table->head = [
+            get_string('time'),
+            get_string('user'),
+            get_string('report:context', 'local_agentdetect'),
+            get_string('page', 'local_agentdetect'),
+            get_string('type', 'local_agentdetect'),
+            get_string('report:fp', 'local_agentdetect'),
+            get_string('report:int', 'local_agentdetect'),
+            get_string('report:combined', 'local_agentdetect'),
+            get_string('coursereport:verdict', 'local_agentdetect'),
+            get_string('report:details', 'local_agentdetect'),
+        ];
+        $table->attributes['class'] = 'table table-striped table-sm';
 
-        if (is_numeric($combined)) {
-            if ($combined >= 70) {
-                $combined = html_writer::tag('span', $combined, ['class' => 'badge badge-danger']);
-            } else if ($combined >= 40) {
-                $combined = html_writer::tag('span', $combined, ['class' => 'badge badge-warning']);
+        foreach ($signals as $signal) {
+            $time = userdate($signal->timecreated, '%Y-%m-%d %H:%M:%S');
+
+            // User link.
+            $userlink = html_writer::link(
+                new moodle_url('/local/agentdetect/report.php', ['tab' => 'signals', 'userid' => $signal->userid]),
+                fullname($signal),
+                ['title' => $signal->email]
+            );
+
+            // Get page URL from signal data.
+            $data = json_decode($signal->signaldata);
+            $pageurl = $data->pageUrl ?? null;
+            $pagetitle = $data->pageTitle ?? null;
+
+            // Page link - show title or shortened URL.
+            // Validate URL scheme to prevent javascript: XSS links.
+            $safescheme = $pageurl && preg_match('/^https?:\/\//i', $pageurl);
+            if ($pageurl && $safescheme) {
+                $displaytext = $pagetitle ? $pagetitle : basename(parse_url($pageurl, PHP_URL_PATH));
+                if (strlen($displaytext) > 30) {
+                    $displaytext = substr($displaytext, 0, 27) . '...';
+                }
+                $pagelink = html_writer::link(
+                    $pageurl,
+                    s($displaytext),
+                    ['title' => s($pageurl), 'target' => '_blank']
+                );
+            } else if ($pageurl) {
+                // Non-http URL — render as escaped text, not a link.
+                $pagelink = html_writer::tag('span', s($pageurl), ['class' => 'text-muted']);
             } else {
-                $combined = html_writer::tag('span', $combined, ['class' => 'badge badge-success']);
+                $pagelink = html_writer::tag('span', '-', ['class' => 'text-muted']);
             }
-        }
 
-        // Verdict badge.
-        $verdict = $signal->verdict ?? '-';
-        if ($verdict === 'HIGH_CONFIDENCE_AGENT') {
-            $verdict = html_writer::tag(
-                'span',
-                get_string('verdict:high', 'local_agentdetect'),
-                ['class' => 'badge badge-danger', 'title' => get_string('verdict:highconfidenceagent', 'local_agentdetect')]
-            );
-        } else if ($verdict === 'PROBABLE_AGENT') {
-            $verdict = html_writer::tag(
-                'span',
-                get_string('verdict:probable', 'local_agentdetect'),
-                ['class' => 'badge badge-warning', 'title' => get_string('verdict:probableagent', 'local_agentdetect')]
-            );
-        } else if ($verdict === 'SUSPICIOUS') {
-            $verdict = html_writer::tag(
-                'span',
-                get_string('verdict:suspiciouslabel', 'local_agentdetect'),
-                ['class' => 'badge badge-warning']
-            );
-        } else if ($verdict === 'LOW_SUSPICION') {
-            $verdict = html_writer::tag(
-                'span',
-                get_string('verdict:low', 'local_agentdetect'),
-                ['class' => 'badge badge-info', 'title' => get_string('verdict:lowsuspicion', 'local_agentdetect')]
-            );
-        } else if ($verdict === 'LIKELY_HUMAN') {
-            $verdict = html_writer::tag(
-                'span',
-                get_string('verdict:human', 'local_agentdetect'),
-                ['class' => 'badge badge-success', 'title' => get_string('verdict:likelyhuman', 'local_agentdetect')]
-            );
-        }
+            // Color code scores.
+            $fpscore = $signal->fingerprintscore ?? '-';
+            $intscore = $signal->interactionscore ?? '-';
+            $combined = $signal->combinedscore ?? '-';
 
-        // Agent detection badge — only show when the CDP-agent score clears
-        // the 'actually suspicious' threshold. This re-applies the gate at
-        // render time so rows written before the client-side gate existed
-        // still render correctly (the stored detectedAgent field on those
-        // rows is frozen regardless of score). Accepts both the new generic
-        // 'ai_browser_agent' label and the legacy 'comet_agentic' one so
-        // historical rows keep rendering the badge when the score warrants.
-        $cometscorefromdata = (int) ($data->comet->score ?? 0);
-        $agenttag = $data->detectedAgent ?? null;
-        $isagenttag = in_array($agenttag, ['ai_browser_agent', 'comet_agentic'], true);
-        if ($isagenttag && $cometscorefromdata >= 40) {
-            $verdict .= ' ' . html_writer::tag(
-                'span',
-                get_string('report:cometagent', 'local_agentdetect'),
-                ['class' => 'badge badge-dark']
-            );
-        }
-
-        // Details - decode and show anomalies.
-        $detailshtml = '';
-        if ($data) {
-            $details = [];
-
-            // Interaction anomalies.
-            if (isset($data->interaction->anomalies) && !empty($data->interaction->anomalies)) {
-                foreach ($data->interaction->anomalies as $a) {
-                    $detailparams = (object) [
-                        'name' => s($a->name),
-                        'value' => round($a->value, 2),
-                        'weight' => (int) $a->weight,
-                    ];
-                    $details[] = html_writer::tag('span', $detailparams->name, ['class' => 'text-danger'])
-                        . ' ' . get_string('report:anomalyweight', 'local_agentdetect', $detailparams);
+            if (is_numeric($combined)) {
+                if ($combined >= 70) {
+                    $combined = html_writer::tag('span', $combined, ['class' => 'badge badge-danger']);
+                } else if ($combined >= 40) {
+                    $combined = html_writer::tag('span', $combined, ['class' => 'badge badge-warning']);
+                } else {
+                    $combined = html_writer::tag('span', $combined, ['class' => 'badge badge-success']);
                 }
             }
 
-            // Agent detection signals.
-            if (isset($data->comet) && !empty($data->comet->detected)) {
-                $cometscore = (int) ($data->comet->score ?? 0);
-                $details[] = html_writer::tag(
+            // Verdict badge.
+            $verdict = $signal->verdict ?? '-';
+            if ($verdict === 'HIGH_CONFIDENCE_AGENT') {
+                $verdict = html_writer::tag(
                     'span',
-                    get_string('report:cometagentscore', 'local_agentdetect', $cometscore),
-                    ['class' => 'text-danger font-weight-bold']
+                    get_string('verdict:high', 'local_agentdetect'),
+                    ['class' => 'badge badge-danger', 'title' => get_string('verdict:highconfidenceagent', 'local_agentdetect')]
                 );
-                if (isset($data->comet->signals) && !empty($data->comet->signals)) {
-                    foreach ($data->comet->signals as $cs) {
-                        $weight = (int) ($cs->weight ?? $cs->maxWeight ?? 0);
-                        $cometparams = (object) ['name' => s($cs->name), 'weight' => $weight];
-                        $details[] = html_writer::tag(
-                            'span',
-                            get_string('report:cometsignal', 'local_agentdetect', $cometparams),
-                            ['class' => 'text-danger']
-                        );
+            } else if ($verdict === 'PROBABLE_AGENT') {
+                $verdict = html_writer::tag(
+                    'span',
+                    get_string('verdict:probable', 'local_agentdetect'),
+                    ['class' => 'badge badge-warning', 'title' => get_string('verdict:probableagent', 'local_agentdetect')]
+                );
+            } else if ($verdict === 'SUSPICIOUS') {
+                $verdict = html_writer::tag(
+                    'span',
+                    get_string('verdict:suspiciouslabel', 'local_agentdetect'),
+                    ['class' => 'badge badge-warning']
+                );
+            } else if ($verdict === 'LOW_SUSPICION') {
+                $verdict = html_writer::tag(
+                    'span',
+                    get_string('verdict:low', 'local_agentdetect'),
+                    ['class' => 'badge badge-info', 'title' => get_string('verdict:lowsuspicion', 'local_agentdetect')]
+                );
+            } else if ($verdict === 'LIKELY_HUMAN') {
+                $verdict = html_writer::tag(
+                    'span',
+                    get_string('verdict:human', 'local_agentdetect'),
+                    ['class' => 'badge badge-success', 'title' => get_string('verdict:likelyhuman', 'local_agentdetect')]
+                );
+            }
+
+            // Agent detection badge — only show when the CDP-agent score clears
+            // the 'actually suspicious' threshold. This re-applies the gate at
+            // render time so rows written before the client-side gate existed
+            // still render correctly (the stored detectedAgent field on those
+            // rows is frozen regardless of score). Accepts both the new generic
+            // 'ai_browser_agent' label and the legacy 'comet_agentic' one so
+            // historical rows keep rendering the badge when the score warrants.
+            $cometscorefromdata = (int) ($data->comet->score ?? 0);
+            $agenttag = $data->detectedAgent ?? null;
+            $isagenttag = in_array($agenttag, ['ai_browser_agent', 'comet_agentic'], true);
+            if ($isagenttag && $cometscorefromdata >= 40) {
+                $verdict .= ' ' . html_writer::tag(
+                    'span',
+                    get_string('report:cometagent', 'local_agentdetect'),
+                    ['class' => 'badge badge-dark']
+                );
+            }
+
+            // Details - decode and show anomalies.
+            $detailshtml = '';
+            if ($data) {
+                $details = [];
+
+                // Interaction anomalies.
+                if (isset($data->interaction->anomalies) && !empty($data->interaction->anomalies)) {
+                    foreach ($data->interaction->anomalies as $a) {
+                        $detailparams = (object) [
+                            'name' => s($a->name),
+                            'value' => round($a->value, 2),
+                            'weight' => (int) $a->weight,
+                        ];
+                        $details[] = html_writer::tag('span', $detailparams->name, ['class' => 'text-danger'])
+                            . ' ' . get_string('report:anomalyweight', 'local_agentdetect', $detailparams);
                     }
                 }
+
+                // Agent detection signals.
+                if (isset($data->comet) && !empty($data->comet->detected)) {
+                    $cometscore = (int) ($data->comet->score ?? 0);
+                    $details[] = html_writer::tag(
+                        'span',
+                        get_string('report:cometagentscore', 'local_agentdetect', $cometscore),
+                        ['class' => 'text-danger font-weight-bold']
+                    );
+                    if (isset($data->comet->signals) && !empty($data->comet->signals)) {
+                        foreach ($data->comet->signals as $cs) {
+                            $weight = (int) ($cs->weight ?? $cs->maxWeight ?? 0);
+                            $cometparams = (object) ['name' => s($cs->name), 'weight' => $weight];
+                            $details[] = html_writer::tag(
+                                'span',
+                                get_string('report:cometsignal', 'local_agentdetect', $cometparams),
+                                ['class' => 'text-danger']
+                            );
+                        }
+                    }
+                }
+
+                // Event counts (for context).
+                if (isset($data->interaction->eventCounts)) {
+                    $ec = $data->interaction->eventCounts;
+                    $ecparams = (object) [
+                        'moves' => (int) ($ec->mouseMoves ?? 0),
+                        'clicks' => (int) ($ec->clicks ?? 0),
+                        'keys' => (int) ($ec->keystrokes ?? 0),
+                    ];
+                    $details[] = html_writer::tag(
+                        'span',
+                        get_string('report:eventcounts', 'local_agentdetect', $ecparams),
+                        ['class' => 'text-muted']
+                    );
+                }
+
+                $detailshtml = html_writer::tag('small', implode('<br>', $details));
+            } else {
+                $detailshtml = html_writer::tag('small', '-', ['class' => 'text-muted']);
             }
 
-            // Event counts (for context).
-            if (isset($data->interaction->eventCounts)) {
-                $ec = $data->interaction->eventCounts;
-                $ecparams = (object) [
-                    'moves' => (int) ($ec->mouseMoves ?? 0),
-                    'clicks' => (int) ($ec->clicks ?? 0),
-                    'keys' => (int) ($ec->keystrokes ?? 0),
-                ];
-                $details[] = html_writer::tag(
-                    'span',
-                    get_string('report:eventcounts', 'local_agentdetect', $ecparams),
-                    ['class' => 'text-muted']
-                );
-            }
-
-            $detailshtml = html_writer::tag('small', implode('<br>', $details));
-        } else {
-            $detailshtml = html_writer::tag('small', '-', ['class' => 'text-muted']);
+            $table->data[] = [
+                $time,
+                $userlink,
+                local_agentdetect_format_context_link($signal->contextid),
+                $pagelink,
+                $signal->signaltype,
+                $fpscore,
+                $intscore,
+                $combined,
+                $verdict,
+                $detailshtml,
+            ];
         }
 
-        $table->data[] = [
-            $time,
-            $userlink,
-            local_agentdetect_format_context_link($signal->contextid),
-            $pagelink,
-            $signal->signaltype,
-            $fpscore,
-            $intscore,
-            $combined,
-            $verdict,
-            $detailshtml,
-        ];
+        echo html_writer::table($table);
     }
-
-    echo html_writer::table($table);
-}
-
 } else {
     // Flags tab.
     $flags = $DB->get_records_sql(
