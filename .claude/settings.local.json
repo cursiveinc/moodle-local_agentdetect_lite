@@ -30,7 +30,8 @@
       "Bash(docker cp *)",
       "Bash(curl -s -o /tmp/admin-out.html -w 'status:%{http_code} size:%{size_download}\\\\n' 'http://localhost:8000/admin/index.php?cache=1')",
       "Read(//tmp/**)",
-      "Bash(node fix-indent.js)"
+      "Bash(node fix-indent.js)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const s=fs.readFileSync\\('amd/build/interaction.min.js','utf8'\\);console.log\\('hookedEditors:', s.includes\\('hookedEditors'\\)||s.includes\\('Set'\\)\\);console.log\\('tryHookTinyMCE:', s.includes\\('tryHookTinyMCE'\\)||s.includes\\('AddEditor'\\)\\);console.log\\('tinyMCE hook:', s.includes\\('tinymce'\\)||s.includes\\('tinyMCE'\\)\\);console.log\\('setTimeout retries:', \\(s.match\\(/setTimeout/g\\)||[]\\).length\\);\")"
     ]
   }
 }

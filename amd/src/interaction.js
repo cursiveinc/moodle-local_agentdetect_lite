@@ -88,6 +88,23 @@ const CLICK_ONLY_QTYPES = [
 ];
 
 /**
+ * TinyMCE editor instances we have already hooked, to prevent double-counting
+ * when tryHookTinyMCE() is retried after async editor initialisation.
+ *
+ * @type {Set}
+ */
+const hookedEditors = new Set();
+
+/**
+ * Whether we have registered the global TinyMCE AddEditor listener yet.
+ * Prevents duplicate global listeners when tryHookTinyMCE() is called
+ * multiple times (initial call + retry timeouts).
+ *
+ * @type {boolean}
+ */
+let tinyMCEGlobalHooked = false;
+
+/**
  * Context ID for sessionStorage scoping (set in startMonitoring).
  *
  * @type {number|null}
@@ -116,6 +133,123 @@ let analysisCache = null;
  * @type {boolean}
  */
 let isMonitoring = false;
+
+/**
+ * Attach read-only keydown/keyup/focus listeners to a single TinyMCE editor
+ * instance. Purely observational — no preventDefault, no stopPropagation, no
+ * properties stored on the editor object. Safe to run alongside tiny_cursive,
+ * which also listens to keyDown/keyUp but only calls stopImmediatePropagation
+ * on Paste events (which we never intercept).
+ *
+ * @param {Object} editor TinyMCE editor instance.
+ * @returns {void}
+ */
+const hookTinyMCEEditor = (editor) => {
+    if (!editor || hookedEditors.has(editor)) {
+        return;
+    }
+    hookedEditors.add(editor);
+
+    // Count text-input focus so zero_keystrokes weighting is correct.
+    // tiny_cursive does not listen to 'focus' — no conflict.
+    editor.on('focus', () => {
+        eventStore.textInputFocusCount++;
+        analysisCache = null;
+    });
+
+    // Record keydown events from inside the TinyMCE iframe.
+    // tiny_cursive also listens to 'keyDown' but does not stopImmediatePropagation
+    // on it, so both handlers will fire. We never call preventDefault/stopPropagation.
+    editor.on('keydown', (e) => {
+        const now = Date.now();
+        const last = eventStore.keystrokes[eventStore.keystrokes.length - 1];
+        addToStore('keystrokes', {
+            key: e.key && e.key.length === 1 ? 'char' : (e.key || 'unknown'),
+            timestamp: now,
+            deltaTime: last ? now - last.timestamp : 0,
+            type: 'down',
+        });
+    });
+
+    // Capture hold duration for keystroke cadence analysis.
+    editor.on('keyup', () => {
+        const keydowns = eventStore.keystrokes.filter(
+            (k) => k.type === 'down' && !k.holdDuration
+        );
+        const matchingKeydown = keydowns[keydowns.length - 1];
+        if (matchingKeydown) {
+            matchingKeydown.holdDuration = Date.now() - matchingKeydown.timestamp;
+        }
+    });
+};
+
+/**
+ * Attempt to hook all TinyMCE editors on the current page.
+ *
+ * Called at startMonitoring time and retried on short delays because Moodle
+ * initialises TinyMCE asynchronously — the editors array may be empty when
+ * the page first loads. Safe to call multiple times; hookedEditors ensures
+ * each editor is only hooked once, and tinyMCEGlobalHooked prevents
+ * registering the AddEditor listener more than once per page.
+ *
+ * TinyMCE version compatibility:
+ *   - v4/5/6: exposes tinymce.editors as an array or object.
+ *   - v7+:    removed tinymce.editors; use tinymce.get() (no args) which
+ *             returns a fresh array of all initialised editors. Always fall
+ *             back to tinymce.activeEditor so we never miss a solo editor.
+ *
+ * @returns {void}
+ */
+const tryHookTinyMCE = () => {
+    const mce = window.tinymce || window.tinyMCE;
+    if (!mce) {
+        return;
+    }
+
+    // Collect all currently-initialised editors across TinyMCE versions.
+    const seen = new Set();
+    const collect = (editor) => {
+        if (editor && !seen.has(editor)) {
+            seen.add(editor);
+            hookTinyMCEEditor(editor);
+        }
+    };
+
+    // TinyMCE 7+: tinymce.get() with no args returns all editors.
+    if (typeof mce.get === 'function') {
+        const got = mce.get();
+        if (Array.isArray(got)) {
+            got.forEach(collect);
+        } else if (got) {
+            collect(got);
+        }
+    }
+
+    // TinyMCE 4/5/6: tinymce.editors is a direct array or keyed object.
+    if (mce.editors) {
+        const list = Array.isArray(mce.editors)
+            ? mce.editors
+            : Object.values(mce.editors);
+        list.forEach(collect);
+    }
+
+    // Always try activeEditor directly — catches the solo-editor case reliably
+    // on all versions even when the above collections return nothing.
+    if (mce.activeEditor) {
+        collect(mce.activeEditor);
+    }
+
+    // Register the global AddEditor listener only once to catch editors that
+    // initialise after our startup retry window (e.g. deferred Moodle loading).
+    if (!tinyMCEGlobalHooked && typeof mce.on === 'function') {
+        tinyMCEGlobalHooked = true;
+        mce.on('AddEditor', (e) => {
+            if (e && e.editor) {
+                hookTinyMCEEditor(e.editor);
+            }
+        });
+    }
+};
 
 /**
  * Start monitoring user interactions.
@@ -189,6 +323,13 @@ export const startMonitoring = (options = {}) => {
     // Pointer event tracking (for CDP dispatch detection).
     document.addEventListener('pointerdown', handlePointerDown, {capture: true, passive: true});
     document.addEventListener('pointermove', handlePointerMove, {passive: true});
+
+    // Hook TinyMCE editors so keystrokes typed inside the iframe-based editor
+    // are visible to our keystroke analysis. Called immediately and retried
+    // after short delays because Moodle initialises TinyMCE asynchronously.
+    tryHookTinyMCE();
+    setTimeout(tryHookTinyMCE, 500);
+    setTimeout(tryHookTinyMCE, 2000);
 };
 
 /**
