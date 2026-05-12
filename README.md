@@ -1,7 +1,7 @@
 # Agent Detection Lite (`local_agentdetect`)
 
 [![Moodle Plugin CI](https://github.com/cursiveinc/moodle-local_agentdetect_lite/actions/workflows/ci.yml/badge.svg)](https://github.com/cursiveinc/moodle-local_agentdetect_lite/actions/workflows/ci.yml)
-
+[![MDL Shield](https://img.shields.io/endpoint?url=https%3A%2F%2Fmdlshield.com%2Fapi%2Fbadge%2Flocal_agentdetect)](https://mdlshield.com/plugins/local_agentdetect)
 A lightweight Moodle local plugin that detects automated browser agents (e.g. Perplexity Comet) during quizzes.
 
 This is the **Lite** edition: quiz-only, no DOM mutation observer, compact data collection and storage. A commercial Pro edition adds page mutation detection (AI helper extensions), autotyper identification, and expanded surface coverage.
