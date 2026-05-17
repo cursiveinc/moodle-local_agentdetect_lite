@@ -62,7 +62,7 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
     }
 
     /**
-     * Test that contexts are correctly identified for a user.
+     * Test that contexts are correctly identified for a user with course-context data only.
      * @covers \local_agentdetect\privacy\provider::get_contexts_for_userid
      */
     public function test_get_contexts_for_userid(): void {
@@ -84,8 +84,37 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
         // Cast all IDs to int for reliable strict comparison.
         $contextids = array_map('intval', $contextlist->get_contextids());
 
-        // Should include the course context and system context.
+        // Should include the course context.
         $this->assertContains((int) $coursecontext->id, $contextids);
+        // Should NOT include the system context — the user has no NULL-context
+        // signals or flags, so privacy tooling should not report system-context
+        // data for them.
+        $this->assertNotContains((int) \context_system::instance()->id, $contextids);
+    }
+
+    /**
+     * Test that system context is included when the user has NULL-context records.
+     * @covers \local_agentdetect\privacy\provider::get_contexts_for_userid
+     */
+    public function test_get_contexts_for_userid_system(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        // Store a signal with no context — the manager persists it with
+        // contextid = NULL, which the privacy provider must surface as
+        // system-context data.
+        $manager = new signal_manager();
+        $manager->store_signal(
+            $user->id,
+            0,
+            'privacy-test-system',
+            'combined',
+            ['combinedscore' => 50, 'verdict' => 'SUSPICIOUS']
+        );
+
+        $contextlist = provider::get_contexts_for_userid($user->id);
+        $contextids = array_map('intval', $contextlist->get_contextids());
+
         $this->assertContains((int) \context_system::instance()->id, $contextids);
     }
 

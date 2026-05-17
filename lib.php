@@ -124,8 +124,10 @@ function local_agentdetect_format_flag_badge(string $flagtype): string {
     $label = $manager->string_exists($stringkey, 'local_agentdetect')
         ? get_string($stringkey, 'local_agentdetect')
         : $flagtype;
-    if ($flagtype === \local_agentdetect\signal_manager::FLAG_SUSPECTED
-            || $flagtype === \local_agentdetect\signal_manager::FLAG_CONFIRMED) {
+    if (
+        $flagtype === \local_agentdetect\signal_manager::FLAG_SUSPECTED
+        || $flagtype === \local_agentdetect\signal_manager::FLAG_CONFIRMED
+    ) {
         return html_writer::tag('span', $label, ['class' => 'badge badge-danger']);
     } else if ($flagtype === \local_agentdetect\signal_manager::FLAG_LOW_SUSPICION) {
         return html_writer::tag('span', $label, ['class' => 'badge badge-warning']);
