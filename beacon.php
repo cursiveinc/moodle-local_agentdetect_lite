@@ -72,11 +72,22 @@ $sessionid = clean_param($data['sessionid'], PARAM_ALPHANUMEXT);
 $signaltype = clean_param($data['signaltype'], PARAM_ALPHA);
 $contextid = clean_param($data['contextid'] ?? 0, PARAM_INT);
 
-// Validate context exists, fall back to system context (0) if not.
+// Validate context exists and that the user has access to it. Fall back to
+// the system context (0) if the context is missing; reject with 403 if the
+// context exists but the user lacks access — mirrors the access check in
+// the external function path (\local_agentdetect\external\report_signals).
 if ($contextid > 0) {
     $ctx = \context::instance_by_id($contextid, IGNORE_MISSING);
     if (!$ctx) {
         $contextid = 0;
+    } else {
+        [, $course, $cm] = get_context_info_array($ctx->id);
+        try {
+            require_login($course, false, $cm, false, true);
+        } catch (\moodle_exception $e) {
+            http_response_code(403);
+            exit;
+        }
     }
 }
 

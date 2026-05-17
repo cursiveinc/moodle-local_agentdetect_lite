@@ -49,10 +49,14 @@ class backup_local_agentdetect_plugin extends backup_local_plugin {
 
         // Define each element and its attributes.
         $signals = new backup_nested_element('agentdetect_signals');
+        // useragent and ipaddress are deliberately excluded from backups: they
+        // are personal identifiers, and there is no use case for replaying
+        // them on a restored-elsewhere instance. The Privacy API still covers
+        // per-user export and deletion of these fields on the live database.
         $signal = new backup_nested_element('signal', ['id'], [
             'userid', 'contextid', 'sessionid', 'signaltype',
             'fingerprintscore', 'interactionscore', 'combinedscore',
-            'verdict', 'signaldata', 'useragent', 'ipaddress', 'timecreated',
+            'verdict', 'signaldata', 'timecreated',
         ]);
 
         $flags = new backup_nested_element('agentdetect_flags');

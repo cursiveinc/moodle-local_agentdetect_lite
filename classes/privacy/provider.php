@@ -88,6 +88,8 @@ class provider implements
      * @return contextlist The contextlist containing the list of contexts.
      */
     public static function get_contexts_for_userid(int $userid): contextlist {
+        global $DB;
+
         $contextlist = new contextlist();
 
         // Signals with a context.
@@ -100,8 +102,21 @@ class provider implements
                  WHERE userid = :userid1 AND contextid IS NOT NULL";
         $contextlist->add_from_sql($sql, ['userid1' => $userid]);
 
-        // Always include system context for records without a specific context.
-        $contextlist->add_system_context();
+        // Only include the system context if the user actually has NULL-context
+        // signals or flags. Otherwise privacy tooling reports "data exists at
+        // system context" when there is none, even though export/delete would
+        // produce empty results.
+        $hassystemdata = $DB->record_exists_sql(
+            "SELECT 1 FROM {local_agentdetect_signals}
+              WHERE userid = :userid1 AND contextid IS NULL
+              UNION
+             SELECT 1 FROM {local_agentdetect_flags}
+              WHERE userid = :userid2 AND contextid IS NULL",
+            ['userid1' => $userid, 'userid2' => $userid]
+        );
+        if ($hassystemdata) {
+            $contextlist->add_system_context();
+        }
 
         return $contextlist;
     }

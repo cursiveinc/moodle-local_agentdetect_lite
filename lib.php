@@ -64,27 +64,39 @@ function local_agentdetect_format_context_link(?int $contextid): string {
                 : $text;
         };
 
+        // Note on escaping: html_writer::link() does NOT escape link text but
+        // DOES escape attribute values (via html_writer::attributes(), which
+        // calls s() on each). So for body text we call s() ourselves, and for
+        // attributes we pass raw strings. We deliberately avoid format_string()
+        // here because in Moodle 5.0 it can double-encode ampersands when
+        // certain filters are active — producing AI&amp;amp;201 from AI&201.
+        // Course/module names are short identifiers that don't need multilang
+        // filter processing for these labels.
         if ($context instanceof context_module) {
             $cm = get_coursemodule_from_id(null, $context->instanceid, 0, false, IGNORE_MISSING);
             if (!$cm) {
                 return html_writer::tag('span', '-', ['class' => 'text-muted']);
             }
             $course = get_course($cm->course);
-            $shortname = format_string($course->shortname);
-            $modname = format_string($cm->name);
-            $shortshort = $truncate($shortname, 10);
-            $shortmod = $truncate($modname, 25);
+            $shortshort = $truncate($course->shortname, 10);
+            $shortmod = $truncate($cm->name, 25);
             $url = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
-            $title = $shortname . ' / ' . $modname;
-            return html_writer::link($url, s($shortshort . ' / ' . $shortmod), ['title' => s($title)]);
+            return html_writer::link(
+                $url,
+                s($shortshort . ' / ' . $shortmod),
+                ['title' => $course->shortname . ' / ' . $cm->name]
+            );
         }
 
         if ($context instanceof context_course) {
             $course = get_course($context->instanceid);
-            $shortname = format_string($course->shortname);
-            $label = $truncate($shortname, 10);
+            $label = $truncate($course->shortname, 10);
             $url = new moodle_url('/course/view.php', ['id' => $course->id]);
-            return html_writer::link($url, s($label), ['title' => format_string($course->fullname)]);
+            return html_writer::link(
+                $url,
+                s($label),
+                ['title' => $course->fullname]
+            );
         }
 
         if ($context instanceof context_system) {
@@ -112,9 +124,10 @@ function local_agentdetect_format_flag_badge(string $flagtype): string {
     $label = $manager->string_exists($stringkey, 'local_agentdetect')
         ? get_string($stringkey, 'local_agentdetect')
         : $flagtype;
-    if ($flagtype === 'agent_suspected' || $flagtype === 'agent_confirmed') {
+    if ($flagtype === \local_agentdetect\signal_manager::FLAG_SUSPECTED
+            || $flagtype === \local_agentdetect\signal_manager::FLAG_CONFIRMED) {
         return html_writer::tag('span', $label, ['class' => 'badge badge-danger']);
-    } else if ($flagtype === 'low_suspicion') {
+    } else if ($flagtype === \local_agentdetect\signal_manager::FLAG_LOW_SUSPICION) {
         return html_writer::tag('span', $label, ['class' => 'badge badge-warning']);
     }
     return html_writer::tag('span', $label, ['class' => 'badge badge-secondary']);

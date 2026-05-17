@@ -59,7 +59,8 @@ if ($download === 'json') {
     $wheresql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
     $signals = $DB->get_records_sql(
-        "SELECT s.*, u.firstname, u.lastname, u.email
+        "SELECT s.*, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic,
+                u.middlename, u.alternatename, u.email
            FROM {local_agentdetect_signals} s
            JOIN {user} u ON u.id = s.userid
            {$wheresql}
@@ -121,8 +122,6 @@ if ($download === 'json') {
             'context' => $resolvecontext((int) $signal->contextid),
             'question_types' => $data->interaction->questionTypes ?? [],
             'text_input_focus_count' => $data->interaction->textInputFocusCount ?? 0,
-            'page_url' => $data->pageUrl ?? null,
-            'page_title' => $data->pageTitle ?? null,
             'fp_score' => $signal->fingerprintscore,
             'int_score' => $signal->interactionscore,
             'combined_score' => $signal->combinedscore,
@@ -175,12 +174,14 @@ echo $OUTPUT->tabtree($tabs, $tab);
 if ($tab === 'signals') {
     // Get all users with signals for the dropdown.
     $userswithsignals = $DB->get_records_sql(
-        "SELECT DISTINCT u.id, u.firstname, u.lastname, u.email,
+        "SELECT DISTINCT u.id, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic,
+                u.middlename, u.alternatename, u.email,
                 MAX(s.combinedscore) as maxscore,
                 COUNT(s.id) as signalcount
            FROM {local_agentdetect_signals} s
            JOIN {user} u ON u.id = s.userid
-          GROUP BY u.id, u.firstname, u.lastname, u.email
+          GROUP BY u.id, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic,
+                   u.middlename, u.alternatename, u.email
           ORDER BY maxscore DESC, u.lastname, u.firstname"
     );
 
@@ -287,7 +288,8 @@ if ($tab === 'signals') {
 
     // Get signals.
     $signals = $DB->get_records_sql(
-        "SELECT s.*, u.firstname, u.lastname, u.email
+        "SELECT s.*, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic,
+                u.middlename, u.alternatename, u.email
            FROM {local_agentdetect_signals} s
            JOIN {user} u ON u.id = s.userid
            {$wheresql}
@@ -348,7 +350,6 @@ if ($tab === 'signals') {
             get_string('time'),
             get_string('user'),
             get_string('report:context', 'local_agentdetect'),
-            get_string('page', 'local_agentdetect'),
             get_string('type', 'local_agentdetect'),
             get_string('report:fp', 'local_agentdetect'),
             get_string('report:int', 'local_agentdetect'),
@@ -368,30 +369,7 @@ if ($tab === 'signals') {
                 ['title' => $signal->email]
             );
 
-            // Get page URL from signal data.
             $data = json_decode($signal->signaldata);
-            $pageurl = $data->pageUrl ?? null;
-            $pagetitle = $data->pageTitle ?? null;
-
-            // Page link - show title or shortened URL.
-            // Validate URL scheme to prevent javascript: XSS links.
-            $safescheme = $pageurl && preg_match('/^https?:\/\//i', $pageurl);
-            if ($pageurl && $safescheme) {
-                $displaytext = $pagetitle ? $pagetitle : basename(parse_url($pageurl, PHP_URL_PATH));
-                if (strlen($displaytext) > 30) {
-                    $displaytext = substr($displaytext, 0, 27) . '...';
-                }
-                $pagelink = html_writer::link(
-                    $pageurl,
-                    s($displaytext),
-                    ['title' => s($pageurl), 'target' => '_blank']
-                );
-            } else if ($pageurl) {
-                // Non-http URL — render as escaped text, not a link.
-                $pagelink = html_writer::tag('span', s($pageurl), ['class' => 'text-muted']);
-            } else {
-                $pagelink = html_writer::tag('span', '-', ['class' => 'text-muted']);
-            }
 
             // Color code scores.
             $fpscore = $signal->fingerprintscore ?? '-';
@@ -469,9 +447,9 @@ if ($tab === 'signals') {
                 if (isset($data->interaction->anomalies) && !empty($data->interaction->anomalies)) {
                     foreach ($data->interaction->anomalies as $a) {
                         $detailparams = (object) [
-                            'name' => s($a->name),
-                            'value' => round($a->value, 2),
-                            'weight' => (int) $a->weight,
+                            'name' => s($a->name ?? ''),
+                            'value' => round((float) ($a->value ?? 0), 2),
+                            'weight' => (int) ($a->weight ?? 0),
                         ];
                         $details[] = html_writer::tag('span', $detailparams->name, ['class' => 'text-danger'])
                             . ' ' . get_string('report:anomalyweight', 'local_agentdetect', $detailparams);
@@ -523,7 +501,6 @@ if ($tab === 'signals') {
                 $time,
                 $userlink,
                 local_agentdetect_format_context_link($signal->contextid),
-                $pagelink,
                 $signal->signaltype,
                 $fpscore,
                 $intscore,
@@ -538,7 +515,8 @@ if ($tab === 'signals') {
 } else {
     // Flags tab.
     $flags = $DB->get_records_sql(
-        "SELECT f.*, u.firstname, u.lastname, u.email
+        "SELECT f.*, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic,
+                u.middlename, u.alternatename, u.email
            FROM {local_agentdetect_flags} f
            JOIN {user} u ON u.id = f.userid
           ORDER BY f.maxscore DESC, f.timemodified DESC",

@@ -84,7 +84,8 @@ function local_agentdetect_display_flagged_students(int $courseid, context_cours
     // Get enrolled users who have flags in these contexts.
     [$ctxinsql, $ctxparams] = $DB->get_in_or_equal($contextids, SQL_PARAMS_NAMED, 'ctx');
 
-    $sql = "SELECT f.userid, u.firstname, u.lastname, u.email,
+    $sql = "SELECT f.userid, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic,
+                   u.middlename, u.alternatename, u.email,
                    MAX(f.maxscore) AS maxscore,
                    MAX(f.detectioncount) AS detectioncount,
                    MAX(f.timemodified) AS lastdetected,
@@ -93,7 +94,8 @@ function local_agentdetect_display_flagged_students(int $courseid, context_cours
               JOIN {user} u ON u.id = f.userid
              WHERE (f.contextid {$ctxinsql} OR f.contextid IS NULL)
                AND f.flagtype != 'cleared'
-          GROUP BY f.userid, u.firstname, u.lastname, u.email, f.flagtype
+          GROUP BY f.userid, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic,
+                   u.middlename, u.alternatename, u.email, f.flagtype
           ORDER BY maxscore DESC, lastdetected DESC";
 
     $flags = $DB->get_records_sql($sql, $ctxparams);

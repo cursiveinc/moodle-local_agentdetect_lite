@@ -47,6 +47,9 @@ class signal_manager {
     /** @var string Flag type for cleared users. */
     const FLAG_CLEARED = 'cleared';
 
+    /** @var string Flag type for low-suspicion matches (score below high threshold). */
+    const FLAG_LOW_SUSPICION = 'low_suspicion';
+
     /**
      * Store a detection signal and update flags if necessary.
      *
@@ -222,57 +225,72 @@ class signal_manager {
 
         $now = time();
 
-        // Check for existing flag.
-        $conditions = ['userid' => $userid];
-        if ($contextid) {
-            $conditions['contextid'] = $contextid;
-        } else {
-            // For null context, we need special handling.
-            $sql = "userid = :userid AND contextid IS NULL";
-            $params = ['userid' => $userid];
-            $existingflag = $DB->get_record_select('local_agentdetect_flags', $sql, $params);
-        }
-
-        if (!isset($existingflag)) {
-            $existingflag = $DB->get_record('local_agentdetect_flags', $conditions);
-        }
-
-        if ($existingflag) {
-            // Update existing flag.
-            $existingflag->detectioncount++;
-            $existingflag->lastsessionid = $sessionid;
-            $existingflag->timemodified = $now;
-
-            if ($score > $existingflag->maxscore) {
-                $existingflag->maxscore = $score;
-            }
-
-            // Escalate flag type if score is high enough.
-            $oldflagtype = $existingflag->flagtype;
-            if ($score >= self::FLAG_THRESHOLD_HIGH && $existingflag->flagtype !== self::FLAG_CONFIRMED) {
-                $existingflag->flagtype = self::FLAG_SUSPECTED;
-            }
-
-            $DB->update_record('local_agentdetect_flags', $existingflag);
-
-            // Fire event if flag type was escalated.
-            if ($existingflag->flagtype !== $oldflagtype) {
-                $this->trigger_user_flagged_event(
-                    $userid,
-                    $contextid,
-                    $existingflag->id,
-                    $existingflag->flagtype,
-                    $existingflag->maxscore
+        // The (userid, contextid) unique index does not constrain duplicate
+        // NULL contextid rows because MySQL/MariaDB and PostgreSQL treat NULL
+        // as distinct in unique indexes. Wrap the read-modify-write in a
+        // delegated transaction so an in-flight failure cannot leave a
+        // partially-written flag, and so concurrent writes on the same row
+        // serialise on the DB rather than racing in PHP. Concurrent NULL-context
+        // writes from the same user remain theoretically possible but the
+        // window is tiny and the worst case is a single duplicate admin row.
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            // Check for existing flag.
+            $conditions = ['userid' => $userid];
+            if ($contextid) {
+                $conditions['contextid'] = $contextid;
+                $existingflag = $DB->get_record('local_agentdetect_flags', $conditions);
+            } else {
+                // For null context, we need special handling.
+                $existingflag = $DB->get_record_select(
+                    'local_agentdetect_flags',
+                    'userid = :userid AND contextid IS NULL',
+                    ['userid' => $userid]
                 );
             }
 
-            return $existingflag->flagtype;
-        } else {
+            if ($existingflag) {
+                // Update existing flag.
+                $existingflag->detectioncount++;
+                $existingflag->lastsessionid = $sessionid;
+                $existingflag->timemodified = $now;
+
+                if ($score > $existingflag->maxscore) {
+                    $existingflag->maxscore = $score;
+                }
+
+                // Escalate flag type if score is high enough.
+                $oldflagtype = $existingflag->flagtype;
+                if ($score >= self::FLAG_THRESHOLD_HIGH && $existingflag->flagtype !== self::FLAG_CONFIRMED) {
+                    $existingflag->flagtype = self::FLAG_SUSPECTED;
+                }
+
+                $DB->update_record('local_agentdetect_flags', $existingflag);
+                $transaction->allow_commit();
+
+                // Fire event if flag type was escalated (outside the
+                // transaction so listeners don't run inside the critical
+                // section).
+                if ($existingflag->flagtype !== $oldflagtype) {
+                    $this->trigger_user_flagged_event(
+                        $userid,
+                        $contextid,
+                        $existingflag->id,
+                        $existingflag->flagtype,
+                        $existingflag->maxscore
+                    );
+                }
+
+                return $existingflag->flagtype;
+            }
+
             // Create new flag.
             $flag = new \stdClass();
             $flag->userid = $userid;
             $flag->contextid = $contextid ?: null;
-            $flag->flagtype = $score >= self::FLAG_THRESHOLD_HIGH ? self::FLAG_SUSPECTED : 'low_suspicion';
+            $flag->flagtype = $score >= self::FLAG_THRESHOLD_HIGH
+                ? self::FLAG_SUSPECTED
+                : self::FLAG_LOW_SUSPICION;
             $flag->maxscore = $score;
             $flag->detectioncount = 1;
             $flag->lastsessionid = $sessionid;
@@ -280,18 +298,21 @@ class signal_manager {
             $flag->timemodified = $now;
 
             $flagid = $DB->insert_record('local_agentdetect_flags', $flag);
-
-            // Fire user_flagged event.
-            $this->trigger_user_flagged_event(
-                $userid,
-                $contextid,
-                $flagid,
-                $flag->flagtype,
-                $flag->maxscore
-            );
-
-            return $flag->flagtype;
+            $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            $transaction->rollback($e);
         }
+
+        // Fire user_flagged event outside the transaction.
+        $this->trigger_user_flagged_event(
+            $userid,
+            $contextid,
+            $flagid,
+            $flag->flagtype,
+            $flag->maxscore
+        );
+
+        return $flag->flagtype;
     }
 
     /**
@@ -342,7 +363,8 @@ class signal_manager {
     ): array {
         global $DB;
 
-        $sql = "SELECT f.*, u.firstname, u.lastname, u.email
+        $sql = "SELECT f.*, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic,
+                       u.middlename, u.alternatename, u.email
                   FROM {local_agentdetect_flags} f
                   JOIN {user} u ON u.id = f.userid
                  WHERE f.maxscore >= :minscore";

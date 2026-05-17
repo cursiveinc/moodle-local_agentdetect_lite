@@ -89,7 +89,6 @@ $string['flagtype:agent_suspected'] = 'Agent suspected';
 $string['flagtype:cleared'] = 'Cleared';
 $string['flagtype:likely_human'] = 'Likely human';
 $string['flagtype:low_suspicion'] = 'Low suspicion';
-$string['page'] = 'Page';
 $string['pluginname'] = 'Agent Detection';
 $string['privacy:metadata:local_agentdetect_flags'] = 'Stores aggregated agent detection flags per user.';
 $string['privacy:metadata:local_agentdetect_flags:contextid'] = 'The Moodle context for this flag.';
