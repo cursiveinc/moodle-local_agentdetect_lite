@@ -181,10 +181,9 @@ function local_agentdetect_display_student_signals(int $courseid, int $userid, c
     // detection data. local/agentdetect:viewreports gates entry to this
     // function but does NOT grant access to arbitrary user IDs — the target
     // must (a) be enrolled in the course and (b) be visible to the viewer
-    // under any active group-mode restriction (groups_user_groups_visible
-    // honours moodle/site:accessallgroups automatically).
-    $course = get_course($courseid);
-    if (!is_enrolled($context, $userid) || !groups_user_groups_visible($course, $userid)) {
+    // under any active group-mode restriction. The check lives in lib.php so
+    // unit tests can exercise it without loading this page script.
+    if (!local_agentdetect_user_visible_in_course($courseid, $userid, $context)) {
         throw new \moodle_exception('error:cannotviewuser', 'local_agentdetect');
     }
 

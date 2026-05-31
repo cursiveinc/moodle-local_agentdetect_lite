@@ -60,22 +60,34 @@ final class get_user_flags_test extends \advanced_testcase {
 
         // Both users have flag rows tagged to this course context.
         $manager = new signal_manager();
-        $manager->store_signal($enrolled->id, $coursecontext->id, 'sess-a', 'combined',
-            ['combinedscore' => 85, 'verdict' => 'HIGH_CONFIDENCE_AGENT']);
-        $manager->store_signal($outsider->id, $coursecontext->id, 'sess-b', 'combined',
-            ['combinedscore' => 85, 'verdict' => 'HIGH_CONFIDENCE_AGENT']);
+        $manager->store_signal(
+            $enrolled->id,
+            $coursecontext->id,
+            'sess-a',
+            'combined',
+            ['combinedscore' => 85, 'verdict' => 'HIGH_CONFIDENCE_AGENT']
+        );
+        $manager->store_signal(
+            $outsider->id,
+            $coursecontext->id,
+            'sess-b',
+            'combined',
+            ['combinedscore' => 85, 'verdict' => 'HIGH_CONFIDENCE_AGENT']
+        );
 
         $this->setUser($teacher);
 
         $result = get_user_flags::execute(
-            [$enrolled->id, $outsider->id],
+            [(int) $enrolled->id, (int) $outsider->id],
             $coursecontext->id
         );
 
+        // The execute() return shape casts userid to int; assert against ints
+        // so PHPUnit's strict assertContains matches.
         $returneduserids = array_column($result, 'userid');
-        $this->assertContains($enrolled->id, $returneduserids);
+        $this->assertContains((int) $enrolled->id, $returneduserids);
         $this->assertNotContains(
-            $outsider->id,
+            (int) $outsider->id,
             $returneduserids,
             'AJAX flag lookup must not return rows for users not enrolled in the course.'
         );
@@ -100,12 +112,17 @@ final class get_user_flags_test extends \advanced_testcase {
         // Student has only a NULL-context flag (e.g., from a beacon with
         // contextid=0 outside of any course).
         $manager = new signal_manager();
-        $manager->store_signal($student->id, 0, 'null-ctx-session', 'combined',
-            ['combinedscore' => 85, 'verdict' => 'HIGH_CONFIDENCE_AGENT']);
+        $manager->store_signal(
+            $student->id,
+            0,
+            'null-ctx-session',
+            'combined',
+            ['combinedscore' => 85, 'verdict' => 'HIGH_CONFIDENCE_AGENT']
+        );
 
         $this->setUser($teacher);
 
-        $result = get_user_flags::execute([$student->id], $coursecontext->id);
+        $result = get_user_flags::execute([(int) $student->id], $coursecontext->id);
 
         // The student has a flag, but it's NULL-context — not visible to a
         // course-scoped caller. Expect either no entry or only the

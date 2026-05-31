@@ -18,13 +18,16 @@
  * Access-control tests for the course-level detection report detail view.
  *
  * Regression coverage for MOO-12 finding #2: a viewer with
- * local/agentdetect:viewreports on a course could open detection details
- * for any user ID, regardless of whether the target was enrolled in the
- * course or visible to the viewer under separate-groups mode.
+ * local/agentdetect:viewreports on a course could open detection details for
+ * any user ID, regardless of whether the target was enrolled in the course or
+ * visible to the viewer under separate-groups mode. Exercises the
+ * local_agentdetect_user_visible_in_course() helper that gates the detail
+ * view in coursereport.php.
  *
  * @package    local_agentdetect
  * @copyright  2026 Cursive Technology <joe@cursivetechnology.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @coversNothing
  */
 
 namespace local_agentdetect;
@@ -35,22 +38,25 @@ namespace local_agentdetect;
  * @package    local_agentdetect
  * @copyright  2026 Cursive Technology <joe@cursivetechnology.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @coversNothing
  */
 final class coursereport_access_test extends \advanced_testcase {
     /**
-     * Load the procedural helpers from coursereport.php exactly once.
+     * Pull in lib.php so the procedural helper under test is defined.
      */
     public static function setUpBeforeClass(): void {
         parent::setUpBeforeClass();
         global $CFG;
-        require_once($CFG->dirroot . '/local/agentdetect/coursereport.php');
+        require_once($CFG->dirroot . '/local/agentdetect/lib.php');
     }
 
     /**
-     * A teacher with viewreports may open the detail page for an enrolled
-     * student. Asserts the visibility check does not reject the happy path.
+     * Enrolled user passes the visibility check — happy path. Confirms the
+     * helper does not falsely reject access for a legitimately viewable user.
+     *
+     * @coversNothing
      */
-    public function test_enrolled_user_passes_visibility_check(): void {
+    public function test_enrolled_user_is_visible(): void {
         $this->resetAfterTest();
 
         $course = $this->getDataGenerator()->create_course();
@@ -60,23 +66,20 @@ final class coursereport_access_test extends \advanced_testcase {
 
         $this->setUser($teacher);
 
-        // The function emits HTML; capture and discard. We only care that it
-        // returns without throwing — i.e., the visibility check passed.
-        ob_start();
-        try {
-            local_agentdetect_display_student_signals($course->id, $student->id, $context);
-        } finally {
-            ob_end_clean();
-        }
-        $this->assertTrue(true, 'Enrolled student must be viewable by teacher.');
+        $this->assertTrue(local_agentdetect_user_visible_in_course(
+            $course->id,
+            (int) $student->id,
+            $context
+        ));
     }
 
     /**
-     * A teacher with viewreports must NOT be able to open the detail page for
-     * a user who is not enrolled in the course. Before MOO-12 the userid was
+     * Unenrolled user fails the visibility check. Before MOO-12 the userid was
      * trusted and the user record loaded without any participant check.
+     *
+     * @coversNothing
      */
-    public function test_non_enrolled_user_blocked(): void {
+    public function test_non_enrolled_user_is_not_visible(): void {
         $this->resetAfterTest();
 
         $course = $this->getDataGenerator()->create_course();
@@ -86,16 +89,21 @@ final class coursereport_access_test extends \advanced_testcase {
 
         $this->setUser($teacher);
 
-        $this->expectException(\moodle_exception::class);
-        local_agentdetect_display_student_signals($course->id, $outsider->id, $context);
+        $this->assertFalse(local_agentdetect_user_visible_in_course(
+            $course->id,
+            (int) $outsider->id,
+            $context
+        ));
     }
 
     /**
-     * Under separate-groups mode, a teacher restricted to one group must NOT
-     * be able to open the detail page for a student in a different group.
-     * Skipped on Moodle stacks without group-management capability surface.
+     * Under separate-groups mode, a teacher restricted to one group cannot see
+     * a student in a different group. Confirms the helper honours group
+     * boundaries, not just enrolment.
+     *
+     * @coversNothing
      */
-    public function test_separate_groups_blocks_cross_group_access(): void {
+    public function test_separate_groups_block_cross_group_access(): void {
         $this->resetAfterTest();
 
         $course = $this->getDataGenerator()->create_course([
@@ -115,7 +123,15 @@ final class coursereport_access_test extends \advanced_testcase {
 
         $this->setUser($teacher);
 
-        $this->expectException(\moodle_exception::class);
-        local_agentdetect_display_student_signals($course->id, $studentb->id, $context);
+        $this->assertTrue(local_agentdetect_user_visible_in_course(
+            $course->id,
+            (int) $studenta->id,
+            $context
+        ));
+        $this->assertFalse(local_agentdetect_user_visible_in_course(
+            $course->id,
+            (int) $studentb->id,
+            $context
+        ));
     }
 }
