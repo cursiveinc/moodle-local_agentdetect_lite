@@ -53,8 +53,6 @@ final class coursereport_access_test extends \advanced_testcase {
     /**
      * Enrolled user passes the visibility check — happy path. Confirms the
      * helper does not falsely reject access for a legitimately viewable user.
-     *
-     * @coversNothing
      */
     public function test_enrolled_user_is_visible(): void {
         $this->resetAfterTest();
@@ -76,8 +74,6 @@ final class coursereport_access_test extends \advanced_testcase {
     /**
      * Unenrolled user fails the visibility check. Before MOO-12 the userid was
      * trusted and the user record loaded without any participant check.
-     *
-     * @coversNothing
      */
     public function test_non_enrolled_user_is_not_visible(): void {
         $this->resetAfterTest();
@@ -100,8 +96,6 @@ final class coursereport_access_test extends \advanced_testcase {
      * Under separate-groups mode, a teacher restricted to one group cannot see
      * a student in a different group. Confirms the helper honours group
      * boundaries, not just enrolment.
-     *
-     * @coversNothing
      */
     public function test_separate_groups_block_cross_group_access(): void {
         $this->resetAfterTest();
