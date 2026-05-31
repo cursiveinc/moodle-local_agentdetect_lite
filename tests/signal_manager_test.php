@@ -86,6 +86,90 @@ final class signal_manager_test extends \advanced_testcase {
     }
 
     /**
+     * Test that a verdict outside the allowlist is rejected. MOO-12 finding #1
+     * (stored XSS): client-controlled verdict text landed in unescaped report
+     * output. Server now rejects any verdict not in get_valid_verdicts().
+     *
+     * @covers \local_agentdetect\signal_manager::store_signal
+     */
+    public function test_store_signal_rejects_invalid_verdict(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        $manager = new signal_manager();
+
+        $this->expectException(\invalid_parameter_exception::class);
+        $manager->store_signal(
+            $user->id,
+            0,
+            'xss-attempt',
+            'combined',
+            [
+                'combinedscore' => 50,
+                'verdict' => '<script>alert(1)</script>',
+            ]
+        );
+    }
+
+    /**
+     * Test that a verdict from the allowlist (and a null verdict, which is
+     * also acceptable) passes validation. Complements the rejection test to
+     * confirm the allowlist isn't accidentally over-strict.
+     *
+     * @covers \local_agentdetect\signal_manager::store_signal
+     */
+    public function test_store_signal_accepts_allowlisted_verdicts(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $manager = new signal_manager();
+
+        foreach (signal_manager::get_valid_verdicts() as $verdict) {
+            $result = $manager->store_signal(
+                $user->id,
+                0,
+                'verdict-allowlist-' . $verdict,
+                'combined',
+                ['combinedscore' => 30, 'verdict' => $verdict]
+            );
+            $this->assertArrayHasKey('signal_id', $result);
+        }
+
+        // Null verdict is allowed — older clients may omit it; server derives
+        // it from combinedScore for downstream rendering.
+        $result = $manager->store_signal(
+            $user->id,
+            0,
+            'verdict-null',
+            'combined',
+            ['combinedscore' => 30]
+        );
+        $this->assertArrayHasKey('signal_id', $result);
+    }
+
+    /**
+     * Test that a signaltype outside the allowlist is rejected. Defense in
+     * depth against unexpected enum values landing in storage and downstream
+     * UI.
+     *
+     * @covers \local_agentdetect\signal_manager::store_signal
+     */
+    public function test_store_signal_rejects_invalid_signaltype(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        $manager = new signal_manager();
+
+        $this->expectException(\invalid_parameter_exception::class);
+        $manager->store_signal(
+            $user->id,
+            0,
+            'bad-type-session',
+            'malicious',
+            ['combinedscore' => 50, 'verdict' => 'SUSPICIOUS']
+        );
+    }
+
+    /**
      * Test storing a signal above the high threshold creates an agent_suspected flag.
      * @covers \local_agentdetect\signal_manager::store_signal
      */

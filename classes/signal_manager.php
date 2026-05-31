@@ -50,6 +50,43 @@ class signal_manager {
     /** @var string Flag type for low-suspicion matches (score below high threshold). */
     const FLAG_LOW_SUSPICION = 'low_suspicion';
 
+    /** @var string Verdict: high-confidence agent. */
+    const VERDICT_HIGH_CONFIDENCE_AGENT = 'HIGH_CONFIDENCE_AGENT';
+
+    /** @var string Verdict: probable agent. */
+    const VERDICT_PROBABLE_AGENT = 'PROBABLE_AGENT';
+
+    /** @var string Verdict: suspicious. */
+    const VERDICT_SUSPICIOUS = 'SUSPICIOUS';
+
+    /** @var string Verdict: low suspicion. */
+    const VERDICT_LOW_SUSPICION = 'LOW_SUSPICION';
+
+    /** @var string Verdict: likely human. */
+    const VERDICT_LIKELY_HUMAN = 'LIKELY_HUMAN';
+
+    /** @var string[] Allowlist of acceptable signal types. */
+    const VALID_SIGNAL_TYPES = ['fingerprint', 'interaction', 'combined', 'unload'];
+
+    /**
+     * Return the allowlist of valid verdict values that the server will accept
+     * and persist. Any other value submitted by a client is rejected by
+     * store_signal() with an invalid_parameter_exception to prevent stored XSS
+     * via the verdict column (which lands unescaped in the admin report's
+     * default-case render path).
+     *
+     * @return string[]
+     */
+    public static function get_valid_verdicts(): array {
+        return [
+            self::VERDICT_HIGH_CONFIDENCE_AGENT,
+            self::VERDICT_PROBABLE_AGENT,
+            self::VERDICT_SUSPICIOUS,
+            self::VERDICT_LOW_SUSPICION,
+            self::VERDICT_LIKELY_HUMAN,
+        ];
+    }
+
     /**
      * Store a detection signal and update flags if necessary.
      *
@@ -69,11 +106,32 @@ class signal_manager {
     ): array {
         global $DB;
 
+        // Enforce signaltype allowlist server-side. The PARAM_ALPHA filter on
+        // the external/beacon entry points constrains characters but not
+        // semantics — a value outside the schema's enumerated set would land
+        // in storage and downstream UI as a freeform string.
+        if (!in_array($signaltype, self::VALID_SIGNAL_TYPES, true)) {
+            throw new \invalid_parameter_exception(
+                'Invalid signaltype: must be one of ' . implode(', ', self::VALID_SIGNAL_TYPES)
+            );
+        }
+
         // Extract scores from data.
         $fingerprintscore = $data['fingerprint']['score'] ?? $data['fingerprintscore'] ?? null;
         $interactionscore = $data['interaction']['score'] ?? $data['interactionscore'] ?? null;
         $combinedscore = $data['combinedScore'] ?? $data['combinedscore'] ?? null;
         $verdict = $data['verdict'] ?? null;
+
+        // Enforce verdict allowlist server-side. Client-supplied verdict text
+        // is rendered in the admin report's default branch without escaping
+        // (MOO-12 finding #1: stored XSS). Reject any value outside the
+        // allowlist; downstream code can derive a verdict from combinedscore
+        // for legitimate clients that omit it.
+        if ($verdict !== null && !in_array($verdict, self::get_valid_verdicts(), true)) {
+            throw new \invalid_parameter_exception(
+                'Invalid verdict: must be one of ' . implode(', ', self::get_valid_verdicts())
+            );
+        }
 
         // Safety net: if a partial payload arrives without combinedscore (e.g.
         // an older client sending an interaction-only unload beacon), fall back

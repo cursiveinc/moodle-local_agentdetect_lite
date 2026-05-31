@@ -53,6 +53,7 @@ $string['coursereport:viewadminreport'] = 'View admin report';
 $string['coursereport:viewdetails'] = 'View details';
 $string['coursereport:whyflagged'] = 'Why was this session flagged?';
 $string['error:signalstorefailed'] = 'Failed to store detection signal.';
+$string['error:cannotviewuser'] = 'You cannot view detection details for this user. They may not be enrolled in this course, or be in a separate group.';
 $string['event:signaldetected'] = 'Agent detection signal recorded';
 $string['event:userflagged'] = 'User flagged by agent detection';
 $string['explain:click.center_precision'] = 'Clicks landed at the exact mathematical centre of page elements, a pattern consistent with programmatic clicking rather than a human hand.';

@@ -177,6 +177,17 @@ function local_agentdetect_display_flagged_students(int $courseid, context_cours
 function local_agentdetect_display_student_signals(int $courseid, int $userid, context_course $context): void {
     global $DB, $OUTPUT;
 
+    // MOO-12 finding #2: enforce target-user visibility before loading any
+    // detection data. local/agentdetect:viewreports gates entry to this
+    // function but does NOT grant access to arbitrary user IDs — the target
+    // must (a) be enrolled in the course and (b) be visible to the viewer
+    // under any active group-mode restriction (groups_user_groups_visible
+    // honours moodle/site:accessallgroups automatically).
+    $course = get_course($courseid);
+    if (!is_enrolled($context, $userid) || !groups_user_groups_visible($course, $userid)) {
+        throw new \moodle_exception('error:cannotviewuser', 'local_agentdetect');
+    }
+
     $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
 
     // Breadcrumb back to summary.
@@ -238,6 +249,16 @@ function local_agentdetect_display_student_signals(int $courseid, int $userid, c
     // This avoids an N+1 query pattern (one DB call per session in the loop).
     $sessionids = array_keys($sessions);
     [$sessinsql, $sessparams] = $DB->get_in_or_equal($sessionids, SQL_PARAMS_NAMED, 'sess');
+    // MOO-12 finding #3: reapply the same course-scoped context restriction
+    // used above. Filtering only by sessionid + userid would pull records
+    // tagged with contexts outside this course whenever the browser reused
+    // the same sessionid (it persists for ~30 minutes), leaking verdict and
+    // signaldata from a context the viewer may not have access to and
+    // distorting the per-session card with cross-context data. We must
+    // reuse the $ctxinsql/$ctxparams pair generated upstream and merge the
+    // params under fresh placeholder names to avoid colliding with $sessparams.
+    [$ctx2insql, $ctx2params] = $DB->get_in_or_equal($contextids, SQL_PARAMS_NAMED, 'ctx2');
+    $sessparams = array_merge($sessparams, $ctx2params);
     $sessparams['userid'] = $userid;
 
     // The primary key s.id is listed first so Moodle's get_records_sql keys
@@ -254,6 +275,7 @@ function local_agentdetect_display_student_signals(int $courseid, int $userid, c
            FROM {local_agentdetect_signals} s
           WHERE s.sessionid {$sessinsql}
             AND s.userid = :userid
+            AND s.contextid {$ctx2insql}
             AND s.signaltype = 'combined'
        ORDER BY s.combinedscore DESC",
         $sessparams
@@ -542,7 +564,12 @@ function local_agentdetect_format_verdict_badge(?string $verdict): string {
                 ['class' => 'badge badge-success', 'title' => get_string('verdict:likelyhuman', 'local_agentdetect')]
             );
         default:
-            return html_writer::tag('span', $verdict, ['class' => 'badge badge-secondary']);
+            // Defense in depth: signal_manager::store_signal() rejects verdicts
+            // outside the allowlist, so this branch should only ever fire for
+            // legacy rows written before that check. Escape the value with s()
+            // so any pre-existing stored XSS payloads from before MOO-12 cannot
+            // execute in the report.
+            return html_writer::tag('span', s($verdict), ['class' => 'badge badge-secondary']);
     }
 }
 
