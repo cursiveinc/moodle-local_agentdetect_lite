@@ -30,6 +30,7 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use context;
+use context_system;
 
 /**
  * External function for retrieving user detection flags.
@@ -87,17 +88,37 @@ class get_user_flags extends external_api {
             return [];
         }
 
+        // MOO-12 finding #2: filter the requested userids to those the caller
+        // may actually see in this context. For course/module contexts that
+        // means enrolled-and-group-visible; outside a course we fall back to
+        // the explicit userids the caller passed (any IDOR there is gated by
+        // the system-level capability check above).
+        $params['userids'] = self::filter_visible_userids($context, $params['userids']);
+        if (empty($params['userids'])) {
+            return [];
+        }
+
         // Get the context and all child context IDs.
         $contextids = self::get_context_and_children_ids($context);
 
-        // Build query for flags in these contexts (including NULL contextid for system-level flags).
+        // MOO-12 finding #2: NULL-context (system-level) records must only
+        // surface to callers invoking this function against the system context.
+        // For course/module-scoped calls, NULL-context records would leak
+        // global detection state through any course where the caller holds
+        // viewreports.
+        $includesystem = ($context instanceof context_system);
+
         [$userinsql, $userparams] = $DB->get_in_or_equal($params['userids'], SQL_PARAMS_NAMED, 'uid');
         [$ctxinsql, $ctxparams] = $DB->get_in_or_equal($contextids, SQL_PARAMS_NAMED, 'ctx');
+
+        $contextwhere = $includesystem
+            ? "(f.contextid {$ctxinsql} OR f.contextid IS NULL)"
+            : "f.contextid {$ctxinsql}";
 
         $sql = "SELECT f.userid, f.flagtype, f.maxscore, f.detectioncount
                   FROM {local_agentdetect_flags} f
                  WHERE f.userid {$userinsql}
-                   AND (f.contextid {$ctxinsql} OR f.contextid IS NULL)
+                   AND {$contextwhere}
                    AND f.flagtype != 'cleared'
               ORDER BY f.maxscore DESC";
 
@@ -122,11 +143,46 @@ class get_user_flags extends external_api {
         // Find users who have signals but no flags — these are "likely human".
         $unflaggeduserids = array_diff($params['userids'], array_keys($seen));
         if (!empty($unflaggeduserids)) {
-            $likelyhuman = self::get_scanned_unflagged_users($unflaggeduserids, $contextids);
+            $likelyhuman = self::get_scanned_unflagged_users($unflaggeduserids, $contextids, $includesystem);
             $result = array_merge($result, $likelyhuman);
         }
 
         return $result;
+    }
+
+    /**
+     * Restrict the requested user ID list to those the current viewer may see
+     * in the given context. For course/module contexts this means enrolled
+     * users whose groups are visible to the viewer (separate-groups aware);
+     * for other contexts the input list is returned unchanged because the
+     * caller has already had to satisfy the capability check.
+     *
+     * @param context $context The context the lookup is scoped to.
+     * @param int[] $userids Caller-supplied user IDs.
+     * @return int[] Filtered list (may be empty).
+     */
+    private static function filter_visible_userids(context $context, array $userids): array {
+        $coursecontext = $context->get_course_context(false);
+        if (!$coursecontext) {
+            return array_values(array_map('intval', $userids));
+        }
+
+        $course = get_course($coursecontext->instanceid);
+        $allowed = [];
+        foreach ($userids as $uid) {
+            $uid = (int) $uid;
+            if ($uid <= 0) {
+                continue;
+            }
+            if (!is_enrolled($context, $uid)) {
+                continue;
+            }
+            if (!groups_user_groups_visible($course, $uid)) {
+                continue;
+            }
+            $allowed[] = $uid;
+        }
+        return $allowed;
     }
 
     /**
@@ -138,19 +194,29 @@ class get_user_flags extends external_api {
      *
      * @param array $userids User IDs to check (already confirmed as unflagged).
      * @param array $contextids Context IDs to search (parent + children).
+     * @param bool $includesystem Whether NULL-context signals should be
+     *                            included (only true for system-context callers).
      * @return array Array of likely_human pseudo-flag entries.
      */
-    private static function get_scanned_unflagged_users(array $userids, array $contextids): array {
+    private static function get_scanned_unflagged_users(
+        array $userids,
+        array $contextids,
+        bool $includesystem = false
+    ): array {
         global $DB;
 
         [$userinsql, $userparams] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'suid');
         [$ctxinsql, $ctxparams] = $DB->get_in_or_equal($contextids, SQL_PARAMS_NAMED, 'sctx');
 
+        $contextwhere = $includesystem
+            ? "(s.contextid {$ctxinsql} OR s.contextid IS NULL)"
+            : "s.contextid {$ctxinsql}";
+
         // Get the max combined score for each unflagged user who has signals.
         $sql = "SELECT s.userid, MAX(s.combinedscore) AS maxscore, COUNT(*) AS signalcount
                   FROM {local_agentdetect_signals} s
                  WHERE s.userid {$userinsql}
-                   AND (s.contextid {$ctxinsql} OR s.contextid IS NULL)
+                   AND {$contextwhere}
               GROUP BY s.userid";
 
         $signals = $DB->get_records_sql($sql, array_merge($userparams, $ctxparams));

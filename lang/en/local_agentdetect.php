@@ -52,6 +52,7 @@ $string['coursereport:verdict'] = 'Verdict';
 $string['coursereport:viewadminreport'] = 'View admin report';
 $string['coursereport:viewdetails'] = 'View details';
 $string['coursereport:whyflagged'] = 'Why was this session flagged?';
+$string['error:cannotviewuser'] = 'You cannot view detection details for this user. They may not be enrolled in this course, or be in a separate group.';
 $string['error:signalstorefailed'] = 'Failed to store detection signal.';
 $string['event:signaldetected'] = 'Agent detection signal recorded';
 $string['event:userflagged'] = 'User flagged by agent detection';
