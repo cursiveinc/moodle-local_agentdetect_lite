@@ -45,6 +45,11 @@ const SESSION_MAX_AGE = 30 * 60 * 1000;
 const MAX_REPORTED_ANOMALIES = 8;
 let initialized = false;
 
+// Timestamp of the last report actually sent to the server. Used to throttle
+// the visibilitychange-triggered report so rapid tab switching cannot burst
+// writes (MOO-13) — we never report more often than reportInterval from it.
+let lastReportTime = 0;
+
 // Cached so handlePageUnload can build a full scored payload synchronously
 // inside beforeunload (Fingerprint.collect is async and cannot be awaited there).
 let lastFingerprint = null;
@@ -434,6 +439,8 @@ const reportSignals = async(type, data) => {
         return;
     }
 
+    lastReportTime = Date.now();
+
     try {
         await Ajax.call([{
             methodname: 'local_agentdetect_report_signals',
@@ -476,6 +483,17 @@ const handlePageUnload = () => {
         interaction.score,
         comet.score
     );
+
+    // Gate the unload beacon by minReportScore, matching the init and periodic
+    // paths. The beacon was previously ungated, so nearly every quiz page exit
+    // wrote a row — by far the highest-volume ingestion path and the main
+    // amplifier behind the session-lock contention in MOO-13. Pages scoring
+    // below the threshold are uninteresting (likely human, no signal) and are
+    // dropped here; genuinely suspicious short-lived pages still report.
+    if (combinedScore < config.minReportScore) {
+        return;
+    }
+
     const verdict = getVerdict(combinedScore);
     const beaconData = buildCombinedPayload(fingerprint, interaction, comet, combinedScore, verdict);
 
@@ -492,9 +510,20 @@ const handlePageUnload = () => {
 };
 
 const handleVisibilityChange = async() => {
-    if (document.visibilityState === 'hidden') {
-        await collectAndReport();
+    if (document.visibilityState !== 'hidden') {
+        return;
     }
+
+    // Throttle: skip if we already reported within the last reportInterval.
+    // Without this, repeatedly switching away from the quiz tab fires a fresh
+    // collectAndReport() each time, multiplying ingestion writes and the
+    // session-lock pressure they create (MOO-13). The periodic timer still
+    // guarantees coverage at the configured cadence.
+    if (Date.now() - lastReportTime < config.reportInterval) {
+        return;
+    }
+
+    await collectAndReport();
 };
 
 /**

@@ -116,6 +116,17 @@ class report_signals extends external_api {
             ];
         }
 
+        // Release the Moodle session lock before doing storage work. All
+        // authentication and access checks above (sesskey, context) are done,
+        // and the storage path below only reads $USER->id and writes to the
+        // database — it never mutates the session. On high-traffic quiz pages
+        // the same user fires many of these reports; holding the session lock
+        // through the synchronous DB insert + event + flag update would force
+        // sibling requests for that user to queue behind it and starve FPM
+        // workers (MOO-13). Closing the session here keeps the critical
+        // section off the lock.
+        \core\session\manager::write_close();
+
         // Store the signal.
         try {
             $manager = new signal_manager();
