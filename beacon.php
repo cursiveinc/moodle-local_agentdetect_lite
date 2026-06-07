@@ -91,6 +91,14 @@ if ($contextid > 0) {
     }
 }
 
+// Release the Moodle session lock before storage. Authentication and the
+// per-context access check above are complete, and the storage path only
+// reads $USER->id and writes to the database — it never mutates the session.
+// The unload beacon is the highest-volume ingestion path, so holding the
+// session lock through the synchronous write here is the worst offender for
+// the session-lock contention described in MOO-13. Close it first.
+\core\session\manager::write_close();
+
 // Store the signal.
 try {
     $manager = new \local_agentdetect\signal_manager();
