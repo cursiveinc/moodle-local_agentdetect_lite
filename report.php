@@ -386,7 +386,10 @@ if ($tab === 'signals') {
                 }
             }
 
-            // Verdict badge.
+            // Verdict badge. Falls through to s($verdict) for any value outside
+            // the allowlist — store_signal() now rejects those at write time
+            // (MOO-12 finding #1), but escape here as defense in depth so any
+            // legacy row written before that check cannot execute stored XSS.
             $verdict = $signal->verdict ?? '-';
             if ($verdict === 'HIGH_CONFIDENCE_AGENT') {
                 $verdict = html_writer::tag(
@@ -418,6 +421,10 @@ if ($tab === 'signals') {
                     get_string('verdict:human', 'local_agentdetect'),
                     ['class' => 'badge badge-success', 'title' => get_string('verdict:likelyhuman', 'local_agentdetect')]
                 );
+            } else if ($verdict !== '-') {
+                // Unknown verdict — escape and label as 'unknown' to avoid
+                // rendering attacker-controlled markup.
+                $verdict = html_writer::tag('span', s($verdict), ['class' => 'badge badge-secondary']);
             }
 
             // Agent detection badge — only show when the CDP-agent score clears

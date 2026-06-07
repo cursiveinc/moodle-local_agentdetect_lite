@@ -136,6 +136,30 @@ function local_agentdetect_format_flag_badge(string $flagtype): string {
 }
 
 /**
+ * Whether the current viewer may see detection data for $userid in this
+ * course context. Combines an enrolment check with the active group-mode
+ * restriction (groups_user_groups_visible honours moodle/site:accessallgroups
+ * automatically). Used by the course-report detail view to gate access to a
+ * caller-supplied user ID; extracted to lib.php so it is unit-testable without
+ * loading coursereport.php (which is a page entrypoint that calls
+ * required_param at top-level).
+ *
+ * @param int $courseid The course ID.
+ * @param int $userid The target user ID.
+ * @param context_course $context The course context.
+ * @return bool True if the viewer may see this user's detection data.
+ */
+function local_agentdetect_user_visible_in_course(
+    int $courseid,
+    int $userid,
+    context_course $context
+): bool {
+    $course = get_course($courseid);
+    return is_enrolled($context, $userid)
+        && groups_user_groups_visible($course, $userid);
+}
+
+/**
  * Extend course navigation with agent detection report link.
  *
  * @param navigation_node $navigation The navigation node.
